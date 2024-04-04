@@ -2,7 +2,11 @@
 
 This is the official implementation of [Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction](https://arxiv.org/abs/2404.02905) using pytorch.
 
+### **NOTE: Mark your calendars! 📅 Our code goes live and ready for action before 9:00 AM, UTC on 4/4/2024. Feel free to hit that star ⭐ or keep eyes peeled with a watch 👓 for the latest update🤗!**
+
 ![abs](https://github.com/FoundationVision/VAR/assets/39692511/9850df90-20b1-4f29-8592-e3526d16d755)
+
+<br>
 
 ## What's new here?
 
@@ -16,7 +20,7 @@ Visual AutoRegressive modeling (VAR) is a new visual generation paradigm that re
 
 ### 🔥 For the first time, GPT-style autoregressive models beat diffusion in image synthesis
 <p align="center">
-<img src="https://github.com/FoundationVision/VAR/assets/39692511/cc30b043-fa4e-4d01-a9b1-e50650d5675d" width=72%>
+<img src="https://github.com/FoundationVision/VAR/assets/39692511/cc30b043-fa4e-4d01-a9b1-e50650d5675d" width=62%>
 <p>
 
 
