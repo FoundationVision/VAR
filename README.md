@@ -1,8 +1,8 @@
-# VAR: Making GPT-style autoregressive model surpass diffusion for the first time🚀
+# VAR: Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction [paper](https://arxiv.org/abs/2404.02905)
 
-This is the official implementation of [Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction](https://arxiv.org/abs/2404.02905) using pytorch.
+TLDR: VAR makes GPT-style autoregressive model surpass diffusion for the first time🚀, and exhibits the Scaling Laws similar to those observed in large language models (LLMs)📈.
 
-### **NOTE: Mark your calendars! 📅 Our code goes live and ready for action before 9:00 AM, UTC on 4/4/2024. Feel free to hit that star ⭐ or keep eyes peeled with a watch 👓 for the latest update🤗!**
+### **NOTE: Mark your calendars! 📅 Our code goes live and ready for action before 9:00 am UTC on 4/4/2024. Feel free to hit that star ⭐ or keep eyes peeled with a watch 👓 for the latest update🤗!**
 
 ![abs](https://github.com/FoundationVision/VAR/assets/39692511/9850df90-20b1-4f29-8592-e3526d16d755)
 
