@@ -1,4 +1,4 @@
-# VAR: Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction [paper](https://arxiv.org/abs/2404.02905)
+# VAR: Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction [[paper]](https://arxiv.org/abs/2404.02905)
 
 TLDR: VAR makes GPT-style autoregressive model surpass diffusion for the first time🚀, and exhibits the Scaling Laws similar to those observed in large language models (LLMs)📈.
 
