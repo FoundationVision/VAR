@@ -43,3 +43,21 @@ Visual AutoRegressive modeling (VAR) is a new visual generation paradigm that re
 
 #### See our [paper](https://arxiv.org/abs/2404.02905) for more analysis, discussions, and evaluations.
 
+
+## License
+This project is under the MIT license. See [LICENSE](LICENSE) for more details.
+
+
+## Citation
+
+If you found this project useful, you can kindly give us a star ⭐, or cite us in your work 📖:
+```
+@Article{VAR,
+      title={Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction}, 
+      author={Keyu Tian and Yi Jiang and Zehuan Yuan and Bingyue Peng and Liwei Wang},
+      year={2024},
+      eprint={2404.02905},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+}
+```
