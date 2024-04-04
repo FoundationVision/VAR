@@ -22,12 +22,12 @@ This is the official PyTorch implementation of [Visual Autoregressive Modeling: 
 Visual Autoregressive Modeling (VAR) redefines the autoregressive learning on images as coarse-to-fine "next-scale prediction" or "next-resolution prediction", diverging from the standard raster-scan "next-token prediction".
 
 <p align="center">
-<img src="https://github.com/FoundationVision/VAR/assets/39692511/3e12655c-37dc-4528-b923-ec6c4cfef178" width=72%>
+<img src="https://github.com/FoundationVision/VAR/assets/39692511/3e12655c-37dc-4528-b923-ec6c4cfef178" width=95%>
 <p>
 
-### 🔥 For the first time, GPT-style autoregressive models surpass diffusion in image synthesis🚀:
+### 🔥 For the first time, GPT-style autoregressive models surpass diffusion models🚀:
 <p align="center">
-<img src="https://github.com/FoundationVision/VAR/assets/39692511/cc30b043-fa4e-4d01-a9b1-e50650d5675d" width=62%>
+<img src="https://github.com/FoundationVision/VAR/assets/39692511/cc30b043-fa4e-4d01-a9b1-e50650d5675d" width=60%>
 <p>
 
 
@@ -35,17 +35,17 @@ Visual Autoregressive Modeling (VAR) redefines the autoregressive learning on im
 
 
 <p align="center">
-<img src="https://github.com/FoundationVision/VAR/assets/39692511/c35fb56e-896e-4e4b-9fb9-7a1c38513804" width=72%>
+<img src="https://github.com/FoundationVision/VAR/assets/39692511/c35fb56e-896e-4e4b-9fb9-7a1c38513804" width=88%>
 <p>
 <p align="center">
-<img src="https://github.com/FoundationVision/VAR/assets/39692511/91d7b92c-8fc3-44d9-8fb4-73d6cdb8ec1e" width=72%>
+<img src="https://github.com/FoundationVision/VAR/assets/39692511/91d7b92c-8fc3-44d9-8fb4-73d6cdb8ec1e" width=88%>
 <p>
 
 
 ### 🔥 Zero-shot generalizability🛠️:
 
 <p align="center">
-<img src="https://github.com/FoundationVision/VAR/assets/39692511/a54a4e52-6793-4130-bae2-9e459a08e96a" width=72%>
+<img src="https://github.com/FoundationVision/VAR/assets/39692511/a54a4e52-6793-4130-bae2-9e459a08e96a" width=80%>
 <p>
 
 #### For a deep dive into our analyses, discussions, and evaluations, check out our [paper](https://arxiv.org/abs/2404.02905).
