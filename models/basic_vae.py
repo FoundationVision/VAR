@@ -1,12 +1,15 @@
-"""
-References:
-- others: https://github.com/CompVis/stable-diffusion/blob/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/ldm/modules/diffusionmodules/model.py
-"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
+# this file only defines the 2 modules used in VQVAE
+__all__ = ['Encoder', 'Decoder',]
+
+
+"""
+References: https://github.com/CompVis/stable-diffusion/blob/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/ldm/modules/diffusionmodules/model.py
+"""
 # swish
 def nonlinearity(x):
     return x * torch.sigmoid(x)

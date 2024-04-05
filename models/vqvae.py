@@ -2,18 +2,18 @@
 References:
 - VectorQuantizer2: https://github.com/CompVis/taming-transformers/blob/3ba01b241669f5ade541ce990f7650a3b8f65318/taming/modules/vqvae/quantize.py#L110
 - GumbelQuantize: https://github.com/CompVis/taming-transformers/blob/3ba01b241669f5ade541ce990f7650a3b8f65318/taming/modules/vqvae/quantize.py#L213
-- DiscreteVAE (VQModel): https://github.com/CompVis/stable-diffusion/blob/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/ldm/models/autoencoder.py#L14
+- VQVAE (VQModel): https://github.com/CompVis/stable-diffusion/blob/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/ldm/models/autoencoder.py#L14
 """
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from .enc_dec import Decoder, Encoder
+from .basic_vae import Decoder, Encoder
 from .quant import VectorQuantizer2
 
 
-class DiscreteVAE(nn.Module):
+class VQVAE(nn.Module):
     def __init__(
         self, vocab_size=4096, z_channels=32, ch=128, dropout=0.0,
         beta=0.25,              # commitment loss weight
@@ -58,21 +58,35 @@ class DiscreteVAE(nn.Module):
         h_BChw, usages, vq_loss, mean_entropy_loss = self.quantize(self.quant_conv(self.encoder(inp)), ret_usages=ret_usages)
         return self.decoder(self.post_quant_conv(h_BChw)), usages, vq_loss, mean_entropy_loss
     
-    def get_GPT_ground_truth(self, inp_img_no_grad: torch.Tensor, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[torch.Tensor]:    # return List[Bl]
-        return self.quantize.infer_multiscale_idx_or_accu(self.quant_conv(self.encoder(inp_img_no_grad)), return_accu=False, v_patch_nums=v_patch_nums)
+    def img_to_idxBl(self, inp_img_no_grad: torch.Tensor, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[torch.Tensor]:    # return List[Bl]
+        f = self.quant_conv(self.encoder(inp_img_no_grad))
+        return self.quantize.f_to_idxBl_or_fhat(f, to_fhat=False, v_patch_nums=v_patch_nums)
     
-    def get_recon(self, x, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None, last_one=False) -> List[torch.Tensor]:
-        ls_accu_BChw = self.quantize.infer_multiscale_idx_or_accu(self.quant_conv(self.encoder(x)), return_accu=True, v_patch_nums=v_patch_nums)
-        # rec_B3HW, ls_accu_BChw, Lq = self(x, return_accu=True)
-        return self.decoder(self.post_quant_conv(ls_accu_BChw[-1])) if last_one else [self.decoder(self.post_quant_conv(f)) for f in ls_accu_BChw]
-    
-    def viz_from_ms_h_BChw(self, ms_h_BChw: List[torch.Tensor], same_shape: bool, last_one=False) -> Union[List[torch.Tensor], torch.Tensor]:
+    def img_to_recon(self, x, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None, last_one=False) -> List[torch.Tensor]:
+        f = self.quant_conv(self.encoder(x))
+        ls_f_hat_BChw = self.quantize.f_to_idxBl_or_fhat(f, to_fhat=True, v_patch_nums=v_patch_nums)
         if last_one:
-            return self.decoder(self.post_quant_conv(self.quantize.viz_from_ms_h_BChw(ms_h_BChw, same_shape=same_shape, last_one=True))).clamp_(-1, 1)
+            return self.decoder(self.post_quant_conv(ls_f_hat_BChw[-1]))
         else:
-            ls = [self.decoder(self.post_quant_conv(h)).clamp_(-1, 1) for h in self.quantize.viz_from_ms_h_BChw(ms_h_BChw, same_shape=same_shape, last_one=False)]
-            ls.reverse()
-            return ls
+            return [self.decoder(self.post_quant_conv(f_hat)) for f_hat in ls_f_hat_BChw]
+    
+    def fhat_to_img(self, f_hat: torch.Tensor):
+        return self.decoder(self.post_quant_conv(f_hat)).clamp_(-1, 1)
+    
+    def embed_to_img(self, ms_h_BChw: List[torch.Tensor], all_to_max_scale: bool, last_one=False) -> Union[List[torch.Tensor], torch.Tensor]:
+        if last_one:
+            return self.decoder(self.post_quant_conv(self.quantize.embed_to_fhat(ms_h_BChw, all_to_max_scale=all_to_max_scale, last_one=True))).clamp_(-1, 1)
+        else:
+            return [self.decoder(self.post_quant_conv(f_hat)).clamp_(-1, 1) for f_hat in self.quantize.embed_to_fhat(ms_h_BChw, all_to_max_scale=all_to_max_scale, last_one=False)]
+    
+    def idxBl_to_img(self, ms_idx_Bl: List[torch.Tensor], same_shape: bool, last_one=False) -> Union[List[torch.Tensor], torch.Tensor]:
+        B = ms_idx_Bl[0].shape[0]
+        ms_h_BChw = []
+        for idx_Bl in ms_idx_Bl:
+            l = idx_Bl.shape[1]
+            pn = round(l ** 0.5)
+            ms_h_BChw.append(self.quantize.embedding(idx_Bl).transpose(1, 2).view(B, self.Cvae, pn, pn))
+        return self.embed_to_img(ms_h_BChw=ms_h_BChw, all_to_max_scale=same_shape, last_one=last_one)
     
     def load_state_dict(self, state_dict: Dict[str, Any], strict=True, assign=False):
         if state_dict['quantize.ema_vocab_hit_SV'].shape[0] != self.quantize.ema_vocab_hit_SV.shape[0]:   # load a pretrained VAE, but using a new num of scales

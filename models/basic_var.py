@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from models.helpers import DropPath, drop_path
 
 
-# this file only defines the 4 blocks used in the transformer
+# this file only defines the 4 blocks used in VAR transformer
 __all__ = ['FFN', 'SelfAttention', 'SABlock', 'AdaLNSABlock',]
 
 
