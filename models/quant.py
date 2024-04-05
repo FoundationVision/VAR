@@ -102,6 +102,7 @@ class VectorQuantizer2(nn.Module):
         if ret_usages: usages = [(self.ema_vocab_hit_SV[si] >= margin).float().mean().item() * 100 for si, pn in enumerate(self.v_patch_nums)]
         else: usages = None
         return f_hat, usages, mean_vq_loss
+    # ===================== `forward` is only used in VAE training =====================
     
     def embed_to_fhat(self, ms_h_BChw: List[torch.Tensor], all_to_max_scale=True, last_one=False) -> Union[List[torch.Tensor], torch.Tensor]:
         ls_f_hat_BChw = []
@@ -164,12 +165,8 @@ class VectorQuantizer2(nn.Module):
         
         return f_hat_or_idx_Bl
     
+    # ===================== idxBl_to_var_input: only used in VAR training, for getting teacher-forcing input =====================
     def idxBl_to_var_input(self, gt_ms_idx_Bl: List[torch.Tensor]) -> torch.Tensor:
-        """
-        helper function, only used in VAR training
-        :param gt_ms_idx_Bl:
-        :return: VAR's teacher-forcing input
-        """
         next_scales = []
         B = gt_ms_idx_Bl[0].shape[0]
         C = self.Cvae
@@ -184,18 +181,10 @@ class VectorQuantizer2(nn.Module):
                 f_hat.add_(self.quant_resi[si/(SN-1)](h_BChw))
                 pn_next = self.v_patch_nums[si+1]
                 next_scales.append(F.interpolate(f_hat, size=(pn_next, pn_next), mode='area').view(B, C, -1).transpose(1, 2))
-        
         return torch.cat(next_scales, dim=1) if len(next_scales) else None    # cat BlCs to BLC, this should be float32
     
+    # ===================== get_next_autoregressive_input: only used in VAR inference, for getting next step's input =====================
     def get_next_autoregressive_input(self, si: int, SN: int, f_hat: torch.Tensor, h_BChw: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Tensor]: # only used in VAR inference
-        """
-        helper function, only used in VAR inference
-        :param si: scale index
-        :param SN: max scale index
-        :param f_hat: f_hat
-        :param h_BChw: embedded feature of last token map
-        :return:
-        """
         HW = self.v_patch_nums[-1]
         if si != SN-1:
             h = self.quant_resi[si/(SN-1)](F.interpolate(h_BChw, size=(HW, HW), mode='bicubic'))     # conv after upsample

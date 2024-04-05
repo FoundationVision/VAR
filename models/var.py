@@ -116,7 +116,7 @@ class VAR(nn.Module):
         )
         
         # 5. attention mask used in training (for masking out the future)
-        #    no mask for inference, as kv cache is used
+        #    it won't be used in inference, since kv cache is enabled
         d: torch.Tensor = torch.cat([torch.full((pn*pn,), i) for i, pn in enumerate(self.patch_nums)]).view(1, self.L, 1)
         dT = d.transpose(1, 2)    # dT: 11L
         lvl_1L = dT[:, 0].contiguous()

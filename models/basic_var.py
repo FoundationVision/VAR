@@ -85,7 +85,7 @@ class SelfAttention(nn.Module):
     
     def kv_caching(self, enable: bool): self.caching, self.cached_k, self.cached_v = enable, None, None
     
-    # NOTE: attn_bias is None during inference
+    # NOTE: attn_bias is None during inference because kv cache is enabled
     def forward(self, x, attn_bias):
         B, L, C = x.shape
         
@@ -146,8 +146,8 @@ class SABlock(nn.Module):
         else:
             self.gamma1 = self.gamma2 = 1
     
-    # NOTE: attn_bias is None during inference
-    def forward(self, x, cond_BD, attn_bias):  # todo tky: minGPT and vqgan also uses pre-norm, just like this, while MaskGiT uses post-norm
+    # NOTE: attn_bias is None during inference because kv cache is enabled
+    def forward(self, x, cond_BD, attn_bias):
         if self.fused_add_norm_fn is not None:
             return self.fused_forward_wo_cond(x, attn_bias=attn_bias)
         main_type = x.dtype
@@ -155,7 +155,7 @@ class SABlock(nn.Module):
         x = x + self.drop_path(self.gamma2 * self.ffn(self.norm2(x.to(dtype=main_type))))               # following flash-attn: using fp32 in residual
         return x.to(dtype=main_type)
     
-    # NOTE: attn_bias is None during inference
+    # NOTE: attn_bias is None during inference because kv cache is enabled
     def fused_forward_wo_cond(self, x_and_residual, attn_bias):
         x, residual = (x_and_residual, None) if isinstance(x_and_residual, torch.Tensor) else x_and_residual
         rowscale1 = drop_path(x=x.new_ones(x.shape[:-1]), drop_prob=self.last_drop_p, training=True) if self.last_drop_p > 0 and self.training else None
@@ -198,7 +198,7 @@ class AdaLNSABlock(nn.Module):
         
         self.fused_add_norm_fn = None
     
-    # NOTE: attn_bias is None during inference
+    # NOTE: attn_bias is None during inference because kv cache is enabled
     def forward(self, x, cond_BD, attn_bias):   # C: embed_dim, D: cond_dim
         if self.shared_aln:
             gamma1, gamma2, scale1, scale2, shift1, shift2 = (self.ada_gss + cond_BD).unbind(2) # 116C + B16C =unbind(2)=> 6 B1C
@@ -210,38 +210,3 @@ class AdaLNSABlock(nn.Module):
     
     def extra_repr(self) -> str:
         return f'shared_aln={self.shared_aln}'
-
-
-def main():
-    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
-    rng = torch.Generator(device=dev)
-    # for Li in ([1, 3, 5], [1, 3]):
-    rng.manual_seed(0)
-    B, H, cq, ckv = 4, 8, 64, 96
-    Cq = H*cq
-    Ckv = H*ckv
-    
-    Li = [5, 4, 7, 6]
-    Lq = 10
-    L = max(Li)
-    attn_bias = torch.zeros(B, 1, Lq, L, device=dev)
-    for i, x in enumerate(Li):
-        attn_bias[i, 0, :, x:] = -torch.inf
-    
-    q = torch.randn(B, Lq, H, cq, generator=rng, device=dev)
-    k = torch.randn(B, L, H, ckv, generator=rng, device=dev)
-    v = torch.randn(B, L, H, ckv, generator=rng, device=dev)
-    tq, tk, tv = q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2)    # BHLc
-    
-    seqlen_k = torch.tensor(Li, dtype=torch.int32, device=dev)
-    cu_seqlens_k = F.pad(torch.cumsum(seqlen_k, dim=0, dtype=torch.torch.int32), (1, 0))
-    kv = torch.stack([k, v], dim=2)
-    kv_compact = torch.cat([kv[i, :Li[i]] for i in range(B)], dim=0)
-    
-    ca = CrossAttention(for_attn_pool=False, embed_dim=Cq, kv_dim=Ckv, num_heads=H)
-    CrossAttention.forward
-    ca(q, (kv_compact, cu_seqlens_k, max(Li))).mean().backward()
-
-
-if __name__ == '__main__':
-    main()
