@@ -10,6 +10,8 @@ from models.basic_var import AdaLNSABlock, SABlock
 from models.helpers import sample_with_top_k_top_p_, gumbel_softmax_with_rng
 from models.vqvae import VQVAE, VectorQuantizer2
 
+from huggingface_hub import PyTorchModelHubMixin
+
 
 class SharedAdaLin(nn.Linear):
     def forward(self, cond_BD):
@@ -304,3 +306,19 @@ class AdaLNBeforeHead(nn.Module):
 class MultiInpIdentity(nn.Module):
     def forward(self, x, *args, **kwargs):
         return x
+
+
+class VARHF(VAR, PyTorchModelHubMixin):
+    def __init__(
+        self,
+        vae_kwargs,
+        num_classes=1000, norm_eps=1e-6, aln=1, aln_gamma_init=1e-3, shared_aln=False, cond_drop_rate=0.1,
+        depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
+        layer_scale=-1., tau=4, cos_attn=False,
+        patch_nums=(1, 2, 3, 4, 5, 6, 8, 10, 13, 16),   # 10 steps by default
+        flash_if_available=True, fused_if_available=True,
+    ):
+        vae_local = VQVAE(**vae_kwargs)
+        super().__init__(
+            vae_local, num_classes, norm_eps, aln, aln_gamma_init, shared_aln, cond_drop_rate, depth, embed_dim, num_heads, mlp_ratio, drop_rate, attn_drop_rate, drop_path_rate, layer_scale, tau, cos_attn, patch_nums, flash_if_available, fused_if_available
+        )
