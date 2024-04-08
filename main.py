@@ -13,11 +13,11 @@ class DistributedApp:
         world_size = self.manager.get_world_size()
         local_rank = self.manager.get_local_rank()
 
-        print(f"Rank: {rank}, World size: {world_size}, Local Rank: {local_rank}")
+        print(f"Rank: {rank}, World size: {world_size}, Local Rank: {local_rank}")  # Changed: Added comment for printing rank and world size
 
         tensor = torch.tensor([rank], dtype=torch.float32)
         tensor = self.manager.allreduce(tensor)
-        print(f"Rank: {rank}, Reduced Tensor: {tensor.item()}")
+        print(f"Rank: {rank}, Reduced Tensor: {tensor.item()}")  # Changed: Added comment for reduced tensor
 
     def finalize(self):
         self.manager.finalize()
