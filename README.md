@@ -9,8 +9,9 @@
 
 
 </div>
-
-This is the official PyTorch implementation of [Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction](https://arxiv.org/abs/2404.02905).
+<p align="center" style="font-size: larger;">
+  <a href="https://arxiv.org/abs/2404.02905">Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction</a>
+</p>
 
 <p align="center">
 <img src="https://github.com/FoundationVision/VAR/assets/39692511/9850df90-20b1-4f29-8592-e3526d16d755" width=95%>
