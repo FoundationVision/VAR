@@ -308,9 +308,9 @@ class MultiInpIdentity(nn.Module):
         return x
 
 
-class VARHF(VAR, PyTorchModelHubMixin,
-            repo_url="https://github.com/FoundationVision/VAR",
-            tags=["image-generation"]):
+class VARHF(VAR, PyTorchModelHubMixin):
+            # repo_url="https://github.com/FoundationVision/VAR",
+            # tags=["image-generation"]):
     def __init__(
         self,
         vae_kwargs,
