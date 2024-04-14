@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# this file only defines the 2 modules used in VQVAE
+# this file only provides the 2 modules used in VQVAE
 __all__ = ['Encoder', 'Decoder',]
 
 

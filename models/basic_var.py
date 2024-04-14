@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from models.helpers import DropPath, drop_path
 
 
-# this file only defines the 4 blocks used in VAR transformer
-__all__ = ['FFN', 'SelfAttention', 'SABlock', 'AdaLNSABlock',]
+# this file only provides the 3 blocks used in VAR transformer
+__all__ = ['FFN', 'AdaLNSelfAttn', 'AdaLNBeforeHead']
 
 
 # automatically import faster operators
@@ -124,64 +124,13 @@ class SelfAttention(nn.Module):
         return f'using_flash={self.using_flash}, using_xform={self.using_xform}, tau={self.tau}, cos_attn={self.cos_attn}'
 
 
-class SABlock(nn.Module):
-    def __init__(
-        self, block_idx, last_drop_p, embed_dim, norm_layer,
-        num_heads, mlp_ratio=4., drop=0., attn_drop=0., drop_path=0., tau=4, cos_attn=False,
-        layer_scale=-1., flash_if_available=False, fused_if_available=True,
-    ):
-        super(SABlock, self).__init__()
-        self.block_idx, self.last_drop_p, self.C = block_idx, last_drop_p, embed_dim
-        self.drop_prob, self.drop_path = drop_path, (DropPath(drop_path) if drop_path > 0. else nn.Identity())
-        self.norm1 = norm_layer(embed_dim)
-        self.attn = SelfAttention(block_idx=block_idx, embed_dim=embed_dim, num_heads=num_heads, attn_drop=attn_drop, proj_drop=drop, tau=tau, cos_attn=cos_attn, flash_if_available=flash_if_available)
-        self.norm2 = norm_layer(embed_dim)
-        self.ffn = FFN(in_features=embed_dim, hidden_features=round(embed_dim * mlp_ratio), drop=drop, fused_if_available=fused_if_available)
-        
-        self.fused_add_norm_fn = dropout_add_layer_norm if fused_if_available else None
-        self.layer_scale = layer_scale
-        if layer_scale >= 0:
-            self.gamma1 = 1 if (self.fused_add_norm_fn is not None and block_idx == 0) else nn.Parameter(layer_scale * torch.ones(embed_dim), requires_grad=True)
-            self.gamma2 = nn.Parameter(layer_scale * torch.ones(embed_dim), requires_grad=True)
-        else:
-            self.gamma1 = self.gamma2 = 1
-    
-    # NOTE: attn_bias is None during inference because kv cache is enabled
-    def forward(self, x, cond_BD, attn_bias):
-        if self.fused_add_norm_fn is not None:
-            return self.fused_forward_wo_cond(x, attn_bias=attn_bias)
-        main_type = x.dtype
-        x = x.float() + self.drop_path(self.gamma1 * self.attn(self.norm1(x), attn_bias=attn_bias))     # following flash-attn: using fp32 in residual
-        x = x + self.drop_path(self.gamma2 * self.ffn(self.norm2(x.to(dtype=main_type))))               # following flash-attn: using fp32 in residual
-        return x.to(dtype=main_type)
-    
-    # NOTE: attn_bias is None during inference because kv cache is enabled
-    def fused_forward_wo_cond(self, x_and_residual, attn_bias):
-        x, residual = (x_and_residual, None) if isinstance(x_and_residual, torch.Tensor) else x_and_residual
-        rowscale1 = drop_path(x=x.new_ones(x.shape[:-1]), drop_prob=self.last_drop_p, training=True) if self.last_drop_p > 0 and self.training else None
-        x, residual = self.fused_add_norm_fn(
-            x0=x, residual=residual, weight=self.norm1.weight, bias=self.norm1.bias, dropout_p=0.0,              # todo: no drop
-            epsilon=self.norm1.eps, rowscale=rowscale1, layerscale=self.gamma1 if isinstance(self.gamma1, torch.nn.Parameter) else None, prenorm=True, residual_in_fp32=True,
-        )
-        x = self.attn(x, attn_bias=attn_bias)
-        rowscale2 = drop_path(x=x.new_ones(x.shape[:-1]), drop_prob=self.drop_prob, training=True) if self.drop_prob > 0 and self.training else None
-        x, residual = self.fused_add_norm_fn(
-            x0=x, residual=residual, weight=self.norm2.weight, bias=self.norm2.bias, dropout_p=0.0,              # todo: no drop
-            epsilon=self.norm2.eps, rowscale=rowscale2, layerscale=self.gamma2 if isinstance(self.gamma2, torch.nn.Parameter) else None, prenorm=True, residual_in_fp32=True,
-        )
-        return self.ffn(x), residual
-    
-    def extra_repr(self) -> str:
-        return f'fused_add_norm={self.fused_add_norm_fn is not None}, layer_scale={self.layer_scale:g} (gamma1 {"on" if isinstance(self.gamma1, nn.Parameter) else "off"}) (gamma2 {"on" if isinstance(self.gamma2, nn.Parameter) else "off"})'
-
-
-class AdaLNSABlock(nn.Module):
+class AdaLNSelfAttn(nn.Module):
     def __init__(
         self, block_idx, last_drop_p, embed_dim, cond_dim, shared_aln: bool, norm_layer,
         num_heads, mlp_ratio=4., drop=0., attn_drop=0., drop_path=0., tau=4, cos_attn=False,
         flash_if_available=False, fused_if_available=True,
     ):
-        super(AdaLNSABlock, self).__init__()
+        super(AdaLNSelfAttn, self).__init__()
         self.block_idx, self.last_drop_p, self.C = block_idx, last_drop_p, embed_dim
         self.C, self.D = embed_dim, cond_dim
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -210,3 +159,15 @@ class AdaLNSABlock(nn.Module):
     
     def extra_repr(self) -> str:
         return f'shared_aln={self.shared_aln}'
+
+
+class AdaLNBeforeHead(nn.Module):
+    def __init__(self, C, D, norm_layer):   # C: embed_dim, D: cond_dim
+        super().__init__()
+        self.C, self.D = C, D
+        self.ln_wo_grad = norm_layer(C, elementwise_affine=False)
+        self.ada_lin = nn.Sequential(nn.SiLU(inplace=False), nn.Linear(D, 2*C))
+    
+    def forward(self, x_BLC: torch.Tensor, cond_BD: torch.Tensor):
+        scale, shift = self.ada_lin(cond_BD).view(-1, 1, 2, self.C).unbind(2)
+        return self.ln_wo_grad(x_BLC).mul(scale.add(1)).add_(shift)

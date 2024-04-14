@@ -132,7 +132,7 @@ class VectorQuantizer2(nn.Module):
         
         return ls_f_hat_BChw
     
-    def f_to_idxBl_or_fhat(self, f_BChw: torch.Tensor, to_fhat: bool, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[torch.Tensor]:  # z_BChw is the feature from inp_img_no_grad
+    def f_to_idxBl_or_fhat(self, f_BChw: torch.Tensor, to_fhat: bool, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[Union[torch.Tensor, torch.LongTensor]]:  # z_BChw is the feature from inp_img_no_grad
         B, C, H, W = f_BChw.shape
         f_no_grad = f_BChw.detach()
         f_rest = f_no_grad.clone()
@@ -140,7 +140,7 @@ class VectorQuantizer2(nn.Module):
         
         f_hat_or_idx_Bl: List[torch.Tensor] = []
         
-        patch_hws = [(pn, pn) if isinstance(pn, int) else (pn[0], pn[1]) for pn in v_patch_nums]    # from small to large
+        patch_hws = [(pn, pn) if isinstance(pn, int) else (pn[0], pn[1]) for pn in (v_patch_nums or self.v_patch_nums)]    # from small to large
         assert patch_hws[-1][0] == H and patch_hws[-1][1] == W, f'{patch_hws[-1]=} != ({H=}, {W=})'
         
         SN = len(patch_hws)
@@ -172,15 +172,15 @@ class VectorQuantizer2(nn.Module):
         C = self.Cvae
         H = W = self.v_patch_nums[-1]
         SN = len(self.v_patch_nums)
-        with torch.cuda.amp.autocast(enabled=False):
-            f_hat = gt_ms_idx_Bl[0].new_zeros(B, C, H, W, dtype=torch.float32)
-            pn_next: int = self.v_patch_nums[0]
-            for si in range(SN-1):
-                if self.prog_si == 0 or (0 <= self.prog_si-1 < si): break   # progressive training: not supported yet, prog_si always -1
-                h_BChw = F.interpolate(self.embedding(gt_ms_idx_Bl[si]).transpose_(1, 2).view(B, C, pn_next, pn_next), size=(H, W), mode='bicubic')
-                f_hat.add_(self.quant_resi[si/(SN-1)](h_BChw))
-                pn_next = self.v_patch_nums[si+1]
-                next_scales.append(F.interpolate(f_hat, size=(pn_next, pn_next), mode='area').view(B, C, -1).transpose(1, 2))
+        
+        f_hat = gt_ms_idx_Bl[0].new_zeros(B, C, H, W, dtype=torch.float32)
+        pn_next: int = self.v_patch_nums[0]
+        for si in range(SN-1):
+            if self.prog_si == 0 or (0 <= self.prog_si-1 < si): break   # progressive training: not supported yet, prog_si always -1
+            h_BChw = F.interpolate(self.embedding(gt_ms_idx_Bl[si]).transpose_(1, 2).view(B, C, pn_next, pn_next), size=(H, W), mode='bicubic')
+            f_hat.add_(self.quant_resi[si/(SN-1)](h_BChw))
+            pn_next = self.v_patch_nums[si+1]
+            next_scales.append(F.interpolate(f_hat, size=(pn_next, pn_next), mode='area').view(B, C, -1).transpose(1, 2))
         return torch.cat(next_scales, dim=1) if len(next_scales) else None    # cat BlCs to BLC, this should be float32
     
     # ===================== get_next_autoregressive_input: only used in VAR inference, for getting next step's input =====================

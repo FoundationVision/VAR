@@ -62,7 +62,7 @@ class VQVAE(nn.Module):
     def fhat_to_img(self, f_hat: torch.Tensor):
         return self.decoder(self.post_quant_conv(f_hat)).clamp_(-1, 1)
     
-    def img_to_idxBl(self, inp_img_no_grad: torch.Tensor, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[torch.Tensor]:    # return List[Bl]
+    def img_to_idxBl(self, inp_img_no_grad: torch.Tensor, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[torch.LongTensor]:    # return List[Bl]
         f = self.quant_conv(self.encoder(inp_img_no_grad))
         return self.quantize.f_to_idxBl_or_fhat(f, to_fhat=False, v_patch_nums=v_patch_nums)
     
@@ -90,6 +90,6 @@ class VQVAE(nn.Module):
             return [self.decoder(self.post_quant_conv(f_hat)) for f_hat in ls_f_hat_BChw]
     
     def load_state_dict(self, state_dict: Dict[str, Any], strict=True, assign=False):
-        if state_dict['quantize.ema_vocab_hit_SV'].shape[0] != self.quantize.ema_vocab_hit_SV.shape[0]:   # load a pretrained VAE, but using a new num of scales
+        if 'quantize.ema_vocab_hit_SV' in state_dict and state_dict['quantize.ema_vocab_hit_SV'].shape[0] != self.quantize.ema_vocab_hit_SV.shape[0]:
             state_dict['quantize.ema_vocab_hit_SV'] = self.quantize.ema_vocab_hit_SV
         return super().load_state_dict(state_dict=state_dict, strict=strict, assign=assign)

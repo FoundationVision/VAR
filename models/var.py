@@ -4,13 +4,12 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from huggingface_hub import PyTorchModelHubMixin
 
 import dist
-from models.basic_var import AdaLNSABlock, SABlock
-from models.helpers import sample_with_top_k_top_p_, gumbel_softmax_with_rng
+from models.basic_var import AdaLNBeforeHead, AdaLNSelfAttn
+from models.helpers import gumbel_softmax_with_rng, sample_with_top_k_top_p_
 from models.vqvae import VQVAE, VectorQuantizer2
-
-from huggingface_hub import PyTorchModelHubMixin
 
 
 class SharedAdaLin(nn.Linear):
@@ -22,9 +21,9 @@ class SharedAdaLin(nn.Linear):
 class VAR(nn.Module):
     def __init__(
         self, vae_local: VQVAE,
-        num_classes=1000, norm_eps=1e-6, aln=1, aln_gamma_init=1e-3, shared_aln=False, cond_drop_rate=0.1,
-        depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
-        layer_scale=-1., tau=4, cos_attn=False,
+        num_classes=1000, depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
+        norm_eps=1e-6, shared_aln=False, cond_drop_rate=0.1,
+        tau=4, cos_attn=False,
         patch_nums=(1, 2, 3, 4, 5, 6, 8, 10, 13, 16),   # 10 steps by default
         flash_if_available=True, fused_if_available=True,
     ):
@@ -33,9 +32,6 @@ class VAR(nn.Module):
         assert embed_dim % num_heads == 0
         self.Cvae, self.V = vae_local.Cvae, vae_local.vocab_size
         self.depth, self.C, self.D, self.num_heads = depth, embed_dim, embed_dim, num_heads
-        self.using_aln, self.aln_init, self.aln_gamma_init, self.layer_scale = aln >= 0, aln, aln_gamma_init, layer_scale
-        if self.using_aln and layer_scale != -1:
-            print(f'**WARNING**: using AdaLNSABlock with {aln=:g}, {aln_gamma_init=:g}; the arg {layer_scale=:g} will be IGNORED because only SABlock cares about layer_scale', flush=True)
         
         self.cond_drop_rate = cond_drop_rate
         self.prog_si = -1   # progressive training
@@ -61,7 +57,7 @@ class VAR(nn.Module):
         # 2. class embedding
         init_std = math.sqrt(1 / self.C / 3)
         self.num_classes = num_classes
-        self.selecting_idx = torch.full((1, num_classes), fill_value=1/num_classes, dtype=torch.float32, device=dist.get_device())
+        self.uniform_prob = torch.full((1, num_classes), fill_value=1.0 / num_classes, dtype=torch.float32, device=dist.get_device())
         self.class_emb = nn.Embedding(self.num_classes + 1, self.C)
         nn.init.trunc_normal_(self.class_emb.weight.data, mean=0, std=init_std)
         self.pos_start = nn.Parameter(torch.empty(1, self.first_l, self.C))
@@ -81,20 +77,14 @@ class VAR(nn.Module):
         nn.init.trunc_normal_(self.lvl_embed.weight.data, mean=0, std=init_std)
         
         # 4. backbone blocks
-        self.shared_ada_lin = nn.Sequential(nn.SiLU(inplace=False), SharedAdaLin(self.D, 6*self.C)) if shared_aln and self.using_aln else nn.Identity()
+        self.shared_ada_lin = nn.Sequential(nn.SiLU(inplace=False), SharedAdaLin(self.D, 6*self.C)) if shared_aln else nn.Identity()
         
         norm_layer = partial(nn.LayerNorm, eps=norm_eps)
         self.drop_path_rate = drop_path_rate
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule (linearly increasing)
         self.blocks = nn.ModuleList([
-            AdaLNSABlock(
+            AdaLNSelfAttn(
                 cond_dim=self.D, shared_aln=shared_aln,
-                block_idx=block_idx, embed_dim=self.C, norm_layer=norm_layer, num_heads=num_heads, mlp_ratio=mlp_ratio,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[block_idx], last_drop_p=0 if block_idx == 0 else dpr[block_idx-1],
-                tau=tau, cos_attn=cos_attn,
-                flash_if_available=flash_if_available, fused_if_available=fused_if_available,
-            ) if self.using_aln else SABlock(
-                layer_scale=layer_scale,
                 block_idx=block_idx, embed_dim=self.C, norm_layer=norm_layer, num_heads=num_heads, mlp_ratio=mlp_ratio,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[block_idx], last_drop_p=0 if block_idx == 0 else dpr[block_idx-1],
                 tau=tau, cos_attn=cos_attn,
@@ -103,16 +93,11 @@ class VAR(nn.Module):
             for block_idx in range(depth)
         ])
         
-        if self.blocks[-1].fused_add_norm_fn is not None:
-            self.gamma2_last = nn.Parameter(self.layer_scale * torch.ones(embed_dim), requires_grad=True) if self.layer_scale >= 0 else 1
-        else:
-            self.gamma2_last = None
-        
         fused_add_norm_fns = [b.fused_add_norm_fn is not None for b in self.blocks]
         self.using_fused_add_norm_fn = any(fused_add_norm_fns)
         print(
             f'\n[constructor]  ==== flash_if_available={flash_if_available} ({sum(b.attn.using_flash for b in self.blocks)}/{self.depth}), fused_if_available={fused_if_available} (fusing_add_ln={sum(fused_add_norm_fns)}/{self.depth}, fusing_mlp={sum(b.ffn.fused_mlp_func is not None for b in self.blocks)}/{self.depth}) ==== \n'
-            f'    [vGPT config ] embed_dim={embed_dim}, num_heads={num_heads}, depth={depth}, mlp_ratio={mlp_ratio}\n'
+            f'    [VAR config ] embed_dim={embed_dim}, num_heads={num_heads}, depth={depth}, mlp_ratio={mlp_ratio}\n'
             f'    [drop ratios ] drop_rate={drop_rate}, attn_drop_rate={attn_drop_rate}, drop_path_rate={drop_path_rate:g} ({torch.linspace(0, drop_path_rate, depth)})',
             end='\n\n', flush=True
         )
@@ -127,18 +112,14 @@ class VAR(nn.Module):
         self.register_buffer('attn_bias_for_masking', attn_bias_for_masking.contiguous())
         
         # 6. classifier head
-        if self.using_aln:
-            self.head_nm = AdaLNBeforeHead(self.C, self.D, norm_layer=norm_layer)
-            self.head = nn.Linear(self.C, self.V)
-        else:
-            self.head_nm = MultiInpIdentity()
-            self.head = nn.Sequential(norm_layer(self.C), nn.Linear(self.C, self.V))
+        self.head_nm = AdaLNBeforeHead(self.C, self.D, norm_layer=norm_layer)
+        self.head = nn.Linear(self.C, self.V)
     
     def get_logits(self, h_or_h_and_residual: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], cond_BD: Optional[torch.Tensor]):
         if not isinstance(h_or_h_and_residual, torch.Tensor):
-            h, resi = h_or_h_and_residual   # is h_and_residual, so fused_add_norm must be used, so self.gamma2_last is not None
-            h = resi + self.gamma2_last * self.blocks[-1].drop_path(h)
-        else:   # is h, so fused_add_norm is not used, and self.gamma2_last is None
+            h, resi = h_or_h_and_residual   # fused_add_norm must be used
+            h = resi + self.blocks[-1].drop_path(h)
+        else:                               # fused_add_norm is not used
             h = h_or_h_and_residual
         return self.head(self.head_nm(h.float(), cond_BD).float()).float()
     
@@ -163,7 +144,7 @@ class VAR(nn.Module):
         else: self.rng.manual_seed(g_seed); rng = self.rng
         
         if label_B is None:
-            label_B = torch.multinomial(self.selecting_idx, num_samples=B, replacement=True, generator=rng).reshape(B)
+            label_B = torch.multinomial(self.uniform_prob, num_samples=B, replacement=True, generator=rng).reshape(B)
         elif isinstance(label_B, int):
             label_B = torch.full((B,), fill_value=self.num_classes if label_B < 0 else label_B, device=self.lvl_1L.device)
         
@@ -182,8 +163,8 @@ class VAR(nn.Module):
             cur_L += pn*pn
             # assert self.attn_bias_for_masking[:, :, last_L:cur_L, :cur_L].sum() == 0, f'AR with {(self.attn_bias_for_masking[:, :, last_L:cur_L, :cur_L] != 0).sum()} / {self.attn_bias_for_masking[:, :, last_L:cur_L, :cur_L].numel()} mask item'
             cond_BD_or_gss = self.shared_ada_lin(cond_BD)
-            SABlock.forward
             x = next_token_map
+            AdaLNSelfAttn.forward
             for b in self.blocks:
                 x = b(x=x, cond_BD=cond_BD_or_gss, attn_bias=None)
             logits_BlV = self.get_logits(x, cond_BD)
@@ -236,7 +217,7 @@ class VAR(nn.Module):
         cond_BD_or_gss = cond_BD_or_gss.to(dtype=main_type)
         attn_bias = attn_bias.to(dtype=main_type)
         
-        SABlock.forward, AdaLNSABlock.forward
+        AdaLNSelfAttn.forward
         for i, b in enumerate(self.blocks):
             x_BLC = b(x=x_BLC, cond_BD=cond_BD_or_gss, attn_bias=attn_bias)
         x_BLC = self.get_logits(x_BLC.float(), cond_BD)
@@ -252,60 +233,60 @@ class VAR(nn.Module):
                 x_BLC[0, 0, 0] += s
         return x_BLC    # logits BLV, V is vocab_size
     
-    def special_init(self, hd0: float): # hd0: head init scale
-        if hd0 >= 0:
+    def init_weights(self, init_adaln=0.5, init_adaln_gamma=1e-5, init_head=0.02, init_std=0.02, conv_std_or_gain=0.02):
+        if init_std < 0: init_std = (1 / self.C / 3) ** 0.5     # init_std < 0: automated
+        
+        print(f'[init_weights] {type(self).__name__} with {init_std=:g}')
+        for m in self.modules():
+            with_weight = hasattr(m, 'weight') and m.weight is not None
+            with_bias = hasattr(m, 'bias') and m.bias is not None
+            if isinstance(m, nn.Linear):
+                nn.init.trunc_normal_(m.weight.data, std=init_std)
+                if with_bias: m.bias.data.zero_()
+            elif isinstance(m, nn.Embedding):
+                nn.init.trunc_normal_(m.weight.data, std=init_std)
+                if m.padding_idx is not None: m.weight.data[m.padding_idx].zero_()
+            elif isinstance(m, (nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.SyncBatchNorm, nn.GroupNorm, nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d)):
+                if with_weight: m.weight.data.fill_(1.)
+                if with_bias: m.bias.data.zero_()
+            # conv: VAR has no conv, only VQVAE has conv
+            elif isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.ConvTranspose1d, nn.ConvTranspose2d, nn.ConvTranspose3d)):
+                if conv_std_or_gain > 0: nn.init.trunc_normal_(m.weight.data, std=conv_std_or_gain)
+                else: nn.init.xavier_normal_(m.weight.data, gain=-conv_std_or_gain)
+                if with_bias: m.bias.data.zero_()
+        
+        if init_head >= 0:
             if isinstance(self.head, nn.Linear):
-                self.head.weight.data.mul_(hd0)
+                self.head.weight.data.mul_(init_head)
                 self.head.bias.data.zero_()
             elif isinstance(self.head, nn.Sequential):
-                self.head[-1].weight.data.mul_(hd0)
+                self.head[-1].weight.data.mul_(init_head)
                 self.head[-1].bias.data.zero_()
         
         if isinstance(self.head_nm, AdaLNBeforeHead):
-            if True:
-                self.head_nm.ada_lin[-1].weight.data.mul_(self.aln_init)
-                if hasattr(self.head_nm.ada_lin[-1], 'bias') and self.head_nm.ada_lin[-1].bias is not None:
-                    self.head_nm.ada_lin[-1].bias.data.zero_()
+            self.head_nm.ada_lin[-1].weight.data.mul_(init_adaln)
+            if hasattr(self.head_nm.ada_lin[-1], 'bias') and self.head_nm.ada_lin[-1].bias is not None:
+                self.head_nm.ada_lin[-1].bias.data.zero_()
         
         depth = len(self.blocks)
         for block_idx, sab in enumerate(self.blocks):
-            sab: Union[AdaLNSABlock, SABlock]
+            sab: AdaLNSelfAttn
             sab.attn.proj.weight.data.div_(math.sqrt(2 * depth))
             sab.ffn.fc2.weight.data.div_(math.sqrt(2 * depth))
             if hasattr(sab.ffn, 'fcg') and sab.ffn.fcg is not None:
                 nn.init.ones_(sab.ffn.fcg.bias)
                 nn.init.trunc_normal_(sab.ffn.fcg.weight, std=1e-5)
             if hasattr(sab, 'ada_lin'):
-                sab.ada_lin[-1].weight.data[:2*self.C].mul_(self.aln_gamma_init)
-                sab.ada_lin[-1].weight.data[2*self.C:].mul_(self.aln_init)
+                sab.ada_lin[-1].weight.data[2*self.C:].mul_(init_adaln)
+                sab.ada_lin[-1].weight.data[:2*self.C].mul_(init_adaln_gamma)
                 if hasattr(sab.ada_lin[-1], 'bias') and sab.ada_lin[-1].bias is not None:
                     sab.ada_lin[-1].bias.data.zero_()
             elif hasattr(sab, 'ada_gss'):
-                sab.ada_gss.data[:, :, :2].mul_(self.aln_gamma_init)
-                sab.ada_gss.data[:, :, 2:].mul_(self.aln_init)
+                sab.ada_gss.data[:, :, 2:].mul_(init_adaln)
+                sab.ada_gss.data[:, :, :2].mul_(init_adaln_gamma)
     
     def extra_repr(self):
-        gamma2_last = self.gamma2_last
-        if isinstance(gamma2_last, nn.Parameter):
-            gamma2_last = f'<vector {self.layer_scale}>'
-        return f'drop_path_rate={self.drop_path_rate:g}, layer_scale={self.layer_scale:g}, gamma2_last={gamma2_last}'
-
-
-class AdaLNBeforeHead(nn.Module):
-    def __init__(self, C, D, norm_layer):   # C: embed_dim, D: cond_dim
-        super().__init__()
-        self.C, self.D = C, D
-        self.ln_wo_grad = norm_layer(C, elementwise_affine=False)
-        self.ada_lin = nn.Sequential(nn.SiLU(inplace=False), nn.Linear(D, 2*C))
-    
-    def forward(self, x_BLC: torch.Tensor, cond_BD: Optional[torch.Tensor]):
-        scale, shift = self.ada_lin(cond_BD).view(-1, 1, 2, self.C).unbind(2)
-        return self.ln_wo_grad(x_BLC).mul(scale.add(1)).add_(shift)
-
-
-class MultiInpIdentity(nn.Module):
-    def forward(self, x, *args, **kwargs):
-        return x
+        return f'drop_path_rate={self.drop_path_rate:g}'
 
 
 class VARHF(VAR, PyTorchModelHubMixin):
@@ -314,13 +295,18 @@ class VARHF(VAR, PyTorchModelHubMixin):
     def __init__(
         self,
         vae_kwargs,
-        num_classes=1000, norm_eps=1e-6, aln=1, aln_gamma_init=1e-3, shared_aln=False, cond_drop_rate=0.1,
-        depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
-        layer_scale=-1., tau=4, cos_attn=False,
+        num_classes=1000, depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
+        norm_eps=1e-6, shared_aln=False, cond_drop_rate=0.1,
+        tau=4, cos_attn=False,
         patch_nums=(1, 2, 3, 4, 5, 6, 8, 10, 13, 16),   # 10 steps by default
         flash_if_available=True, fused_if_available=True,
     ):
         vae_local = VQVAE(**vae_kwargs)
         super().__init__(
-            vae_local, num_classes, norm_eps, aln, aln_gamma_init, shared_aln, cond_drop_rate, depth, embed_dim, num_heads, mlp_ratio, drop_rate, attn_drop_rate, drop_path_rate, layer_scale, tau, cos_attn, patch_nums, flash_if_available, fused_if_available
+            vae_local=vae_local,
+            num_classes=num_classes, depth=depth, embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
+            norm_eps=norm_eps, shared_aln=shared_aln, cond_drop_rate=cond_drop_rate,
+            tau=tau, cos_attn=cos_attn,
+            patch_nums=patch_nums,
+            flash_if_available=flash_if_available, fused_if_available=fused_if_available,
         )
