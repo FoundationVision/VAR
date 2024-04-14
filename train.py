@@ -84,6 +84,7 @@ def build_everything(args: arg_util.Args):
     from utils.lr_control import filter_params
     
     vae_local, var_wo_ddp = build_vae_var(
+        V=4096, Cvae=32, ch=160, share_quant_resi=4,        # hard-coded VQVAE hyperparameters
         device=dist.get_device(), patch_nums=args.patch_nums,
         num_classes=num_classes, depth=args.depth, shared_aln=args.saln, cos_attn=args.cos,
         flash_if_available=args.fuse, fused_if_available=args.fuse,
