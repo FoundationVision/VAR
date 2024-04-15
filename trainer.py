@@ -137,30 +137,32 @@ class VARTrainer(object):
             grad_norm = grad_norm.item()
             metric_lg.update(Lm=Lmean, Lt=Ltail, Accm=acc_mean, Acct=acc_tail, tnm=grad_norm)
         
-        if (g_it == 0 or (g_it + 1) % 500 == 0) and self.is_visualizer:
+        if g_it == 0 or (g_it + 1) % 500 == 0:
             if g_it == 0:
                 prob_per_class_is_chosen = gt_BL.view(-1).bincount(minlength=V).float()
                 dist.allreduce(prob_per_class_is_chosen)
-                prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
-                cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
-                tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-10000)
-                tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-1000)
+                if self.is_visualizer:
+                    prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
+                    cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
+                    tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-10000)
+                    tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-1000)
             
             prob_per_class_is_chosen = pred_BL.view(-1).bincount(minlength=V).float()
             dist.allreduce(prob_per_class_is_chosen)
-            prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
-            cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
             
-            kw = dict(z_voc_usage=cluster_usage)
-            for si, (bg, ed) in enumerate(self.begin_ends):
-                if 0 <= prog_si < si: break
-                pred, tar = logits_BLV.data[:, bg:ed].reshape(-1, V), gt_BL[:, bg:ed].reshape(-1)
-                acc = (pred.argmax(dim=-1) == tar).float().mean().item() * 100
-                ce = self.val_loss(pred, tar).item()
-                kw[f'acc_{self.resos[si]}'] = acc
-                kw[f'L_{self.resos[si]}'] = ce
-            tb_lg.update(head='AR_iter_loss', **kw, step=g_it)
-            tb_lg.update(head='AR_iter_schedule', prog_a_reso=self.resos[prog_si], prog_si=prog_si, prog_wp=prog_wp, step=g_it)
+            if self.is_visualizer:
+                prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
+                cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
+                kw = dict(z_voc_usage=cluster_usage)
+                for si, (bg, ed) in enumerate(self.begin_ends):
+                    if 0 <= prog_si < si: break
+                    pred, tar = logits_BLV.data[:, bg:ed].reshape(-1, V), gt_BL[:, bg:ed].reshape(-1)
+                    acc = (pred.argmax(dim=-1) == tar).float().mean().item() * 100
+                    ce = self.val_loss(pred, tar).item()
+                    kw[f'acc_{self.resos[si]}'] = acc
+                    kw[f'L_{self.resos[si]}'] = ce
+                tb_lg.update(head='AR_iter_loss', **kw, step=g_it)
+                tb_lg.update(head='AR_iter_schedule', prog_a_reso=self.resos[prog_si], prog_si=prog_si, prog_wp=prog_wp, step=g_it)
         
         self.var_wo_ddp.prog_si = self.vae_local.quantize.prog_si = -1
         return grad_norm, scale_log2
