@@ -79,7 +79,7 @@ class SyncPrint(object):
     def __init__(self, local_output_dir, sync_stdout=True):
         self.sync_stdout = sync_stdout
         self.terminal_stream = sys.stdout if sync_stdout else sys.stderr
-        fname = os.path.join(local_output_dir, 'b1_stdout.txt' if sync_stdout else 'b2_stderr.txt')
+        fname = os.path.join(local_output_dir, 'stdout.txt' if sync_stdout else 'stderr.txt')
         existing = os.path.exists(fname)
         self.file_stream = open(fname, 'a')
         if existing:

@@ -79,9 +79,41 @@ We provide VAR models for you to play with, which are on <a href='https://huggin
 
 You can load these models to generate images via the codes in [demo_sample.ipynb](demo_sample.ipynb). Note: you need to download [vae_ch160v4096z32.pth](https://huggingface.co/FoundationVision/var/resolve/main/vae_ch160v4096z32.pth) first.
 
+
 ## Installation
 
+1. Install `torch>=2.0.0`.
+2. Install other pip packages via `pip3 install -r requirements.txt`.
+3. (Optional) install and compile `flash-attn` and `xformers` for faster attention computation. Our code will automatically use them if installed. See [models/basic_var.py#L15-L30](models/basic_var.py#L15-L30).
 
+
+## Training Scripts
+
+To train VAR-d{16, 20, 24, 30} on ImageNet 256x256, you can run the following command:
+```shell
+# d16
+torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
+  --depth=16 --bs=768 --ep=200 --fp16=1 --alng=1e-3 --wpe=0.1
+# d20
+torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
+  --depth=20 --bs=768 --ep=250 --fp16=1 --alng=1e-3 --wpe=0.1
+# d24
+torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
+  --depth=24 --bs=768 --ep=350 --fp16=1 --alng=1e-4 --wpe=0.01
+# d30
+torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
+  --depth=30 --bs=1024 --ep=350 --fp16=1 --alng=1e-5 --wpe=0.01
+```
+A folder named `local_output` will be created to save the checkpoints and logs.
+You can monitor the training process by checking the logs in `local_output/stdout.txt`, or using `tensorboard --logdir=local_output/`.
+
+If your experiment is interrupted, just rerun the command, and the training will **automatically resume** from the last checkpoint in `local_output/ckpt*.pth` (see [utils/misc.py#L344-L357](utils/misc.py#L344-L357)).
+
+## Sampling & Zero-shot Inference
+
+For evaluation, sample images from VAR-d{16, 20, 24, 30} by using `top_p=0.96`, `top_k=900`, and `cfg=1.5`.
+Note this `cfg` is small for a trade-off between quality and diversity. You can adjust it to `cfg=5.0` for better quality.
+We'll provide the sampling script soon.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

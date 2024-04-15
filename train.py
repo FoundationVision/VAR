@@ -86,7 +86,7 @@ def build_everything(args: arg_util.Args):
     vae_local, var_wo_ddp = build_vae_var(
         V=4096, Cvae=32, ch=160, share_quant_resi=4,        # hard-coded VQVAE hyperparameters
         device=dist.get_device(), patch_nums=args.patch_nums,
-        num_classes=num_classes, depth=args.depth, shared_aln=args.saln, cos_attn=args.cos,
+        num_classes=num_classes, depth=args.depth, shared_aln=args.saln, attn_l2_norm=args.anorm,
         flash_if_available=args.fuse, fused_if_available=args.fuse,
         init_adaln=args.aln, init_adaln_gamma=args.alng, init_head=args.hd, init_std=args.ini,
     )
@@ -116,11 +116,10 @@ def build_everything(args: arg_util.Args):
         'scale_mul',
     })
     opt_clz = {
-        'adam':  partial(torch.optim.AdamW, betas=(0.9, args.beta1), fused=args.afuse),
-        'adamw': partial(torch.optim.AdamW, betas=(0.9, args.beta1), fused=args.afuse),
+        'adam':  partial(torch.optim.AdamW, betas=(0.9, 0.95), fused=args.afuse),
+        'adamw': partial(torch.optim.AdamW, betas=(0.9, 0.95), fused=args.afuse),
     }[args.opt.lower().strip()]
     opt_kw = dict(lr=args.tlr, weight_decay=0)
-    if args.oeps: opt_kw['eps'] = args.oeps
     print(f'[INIT] optim={opt_clz}, opt_kw={opt_kw}\n')
     
     var_optim = AmpOptimizer(
@@ -288,21 +287,12 @@ def train_one_ep(ep: int, is_first_ep: bool, start_it: int, args: arg_util.Args,
         min_tlr, max_tlr, min_twd, max_twd = lr_wd_annealing(args.sche, trainer.var_opt.optimizer, args.tlr, args.twd, args.twde, g_it, wp_it, max_it, wp0=args.wp0, wpe=args.wpe)
         
         if args.pg: # default: 0.0, no progressive training, won't get into this
-            if args.candidate_prog_si is None:
-                if g_it <= wp_it: prog_si = args.pg0
-                elif g_it >= max_it*args.pg: prog_si = len(args.patch_nums) - 1
-                else:
-                    delta = len(args.patch_nums) - 1 - args.pg0
-                    progress = min(max((g_it - wp_it) / (max_it*args.pg - wp_it), 0), 1) # from 0 to 1
-                    prog_si = args.pg0 + round(progress * delta)    # from args.pg0 to len(args.patch_nums)-1
+            if g_it <= wp_it: prog_si = args.pg0
+            elif g_it >= max_it*args.pg: prog_si = len(args.patch_nums) - 1
             else:
-                if g_it <= wp_it: prog_si = args.candidate_prog_si[0].item()
-                elif g_it >= max_it*args.pg: prog_si = len(args.patch_nums) - 1
-                else:
-                    delta = len(args.patch_nums) - 1
-                    progress = min(max((g_it - wp_it) / (max_it * args.pg - wp_it), 0), 1) # from 0 to 1
-                    prog_si = float(progress * delta) # from 0 to len(args.patch_nums)-1
-                    prog_si = args.candidate_prog_si[np.argmin(np.abs(args.candidate_prog_si-prog_si)).item()].item()
+                delta = len(args.patch_nums) - 1 - args.pg0
+                progress = min(max((g_it - wp_it) / (max_it*args.pg - wp_it), 0), 1) # from 0 to 1
+                prog_si = args.pg0 + round(progress * delta)    # from args.pg0 to len(args.patch_nums)-1
         else:
             prog_si = -1
         

@@ -31,38 +31,38 @@ class Args(Tap):
     # VAR
     tfast: int = 0      # torch.compile VAR; =0: not compile; 1: compile with 'reduce-overhead'; 2: compile with 'max-autotune'
     depth: int = 16     # VAR depth
-    saln: bool = False  # whether to use shared adaln
-    cos: bool = False   # whether to use cosine attn
-    fuse: bool = True   # whether to use fused op like flash attn, xformers, fused MLP, fused LayerNorm, etc.
     # VAR initialization
-    ini: float = 0.02
+    ini: float = -1     # -1: automated model parameter initialization
     hd: float = 0.02    # head.w *= hd
     aln: float = 0.5    # the multiplier of ada_lin.w's initialization
     alng: float = 1e-5  # the multiplier of ada_lin.w[gamma channels]'s initialization
     # VAR optimization
-    fp16: int = 0       # 1: using fp16, 2: bf16
-    tblr: float = 6e-4      # base lr
+    fp16: int = 0           # 1: using fp16, 2: bf16
+    tblr: float = 1e-4      # base lr
     tlr: float = None       # lr = base lr * (bs / 256)
     twd: float = 0.05       # initial wd
     twde: float = 0         # final wd, =twde or twd
     tclip: float = 2.       # <=0 for not using grad clip
     ls: float = 0.0         # label smooth
     
-    bs: int = 512           # global batch size
+    bs: int = 768           # global batch size
     batch_size: int = 0     # [automatically set; don't specify this] batch size per GPU = round(args.bs / args.ac / dist.get_world_size() / 8) * 8
     glb_batch_size: int = 0 # [automatically set; don't specify this] global batch size = args.batch_size * dist.get_world_size()
     ac: int = 1             # gradient accumulation
     
-    ep: int = 100
+    ep: int = 250
     wp: float = 0
     wp0: float = 0.005      # initial lr ratio at the begging of lr warm up
     wpe: float = 0.01       # final lr ratio at the end of training
     sche: str = 'lin0'      # lr schedule
     
     opt: str = 'adamw'      # lion: https://cloud.tencent.com/developer/article/2336657?areaId=106001 lr=5e-5 (0.25x) wd=0.8 (8x); Lion needs a large bs to work
-    beta1: float = 0.95     # adamw's beta1
-    oeps: float = 0         # adamw's eps, pixart uses 1e-10
     afuse: bool = True      # fused adamw
+    
+    # other hps
+    saln: bool = False      # whether to use shared adaln
+    anorm: bool = True      # whether to use L2 normalized attention
+    fuse: bool = True       # whether to use fused op like flash attn, xformers, fused MLP, fused LayerNorm, etc.
     
     # data
     pn: str = '1_2_3_4_5_6_8_10_13_16'
@@ -77,11 +77,8 @@ class Args(Tap):
     
     # progressive training
     pg: float = 0.0         # >0 for use progressive training during [0%, this] of training
-    pg0: int = 1            # progressive initial stage, 0: from the 1st token map, 1: from the 2nd token map, etc
-    pgs: str = ''           # only select these specified pns, e.g., 4_8. if this is used, pg0 would be ignored
+    pg0: int = 4            # progressive initial stage, 0: from the 1st token map, 1: from the 2nd token map, etc
     pgwp: float = 0         # num of warmup epochs at each progressive stage
-    prog_patch_nums: tuple = None           # [automatically set; don't specify this]
-    candidate_prog_si: np.ndarray = None    # [automatically set; don't specify this]
     
     # would be automatically set in runtime
     cmd: str = ' '.join(sys.argv[1:])  # [automatically set; don't specify this]
@@ -234,13 +231,9 @@ def init_dist_and_get_args():
     args.twde = args.twde or args.twd
     
     if args.wp == 0:
-        args.wp = args.ep * 1/100
+        args.wp = args.ep * 1/50
     
     # update args: progressive training
-    if args.pgs:
-        args.prog_patch_nums = tuple(pn for pn in map(int, args.pgs.replace('-', '_').split('_')) if pn < args.patch_nums[-1])
-        args.candidate_prog_si = np.array([args.patch_nums.index(x) for x in args.prog_patch_nums])
-        args.pg0 = None
     if args.pgwp == 0:
         args.pgwp = args.ep * 1/300
     if args.pg > 0:

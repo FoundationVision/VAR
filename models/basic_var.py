@@ -11,12 +11,13 @@ from models.helpers import DropPath, drop_path
 __all__ = ['FFN', 'AdaLNSelfAttn', 'AdaLNBeforeHead']
 
 
-# automatically import faster operators
+# automatically import fused operators
 dropout_add_layer_norm = fused_mlp_func = memory_efficient_attention = flash_attn_func = None
 try:
     from flash_attn.ops.layer_norm import dropout_add_layer_norm
     from flash_attn.ops.fused_dense import fused_mlp_func
 except ImportError: pass
+# automatically import faster attention implementations
 try: from xformers.ops import memory_efficient_attention
 except ImportError: pass
 try: from flash_attn import flash_attn_func              # qkv: BLHc, ret: BLHcq
@@ -57,18 +58,18 @@ class FFN(nn.Module):
 class SelfAttention(nn.Module):
     def __init__(
         self, block_idx, embed_dim=768, num_heads=12,
-        attn_drop=0., proj_drop=0., tau=4, cos_attn=False, flash_if_available=True,
+        attn_drop=0., proj_drop=0., attn_l2_norm=False, flash_if_available=True,
     ):
         super().__init__()
         assert embed_dim % num_heads == 0
         self.block_idx, self.num_heads, self.head_dim = block_idx, num_heads, embed_dim // num_heads  # =64
-        self.tau, self.cos_attn = tau, cos_attn
-        if self.cos_attn:
+        self.attn_l2_norm = attn_l2_norm
+        if self.attn_l2_norm:
             self.scale = 1
             self.scale_mul_1H11 = nn.Parameter(torch.full(size=(1, self.num_heads, 1, 1), fill_value=4.0).log(), requires_grad=True)
             self.max_scale_mul = torch.log(torch.tensor(100)).item()
         else:
-            self.scale = 1 / math.sqrt(self.head_dim) / self.tau
+            self.scale = 0.25 / math.sqrt(self.head_dim)
         
         self.mat_qkv = nn.Linear(embed_dim, embed_dim * 3, bias=False)
         self.q_bias, self.v_bias = nn.Parameter(torch.zeros(embed_dim)), nn.Parameter(torch.zeros(embed_dim))
@@ -96,7 +97,7 @@ class SelfAttention(nn.Module):
         if using_flash or self.using_xform: q, k, v = qkv.unbind(dim=2); dim_cat = 1   # q or k or v: BLHc
         else: q, k, v = qkv.permute(2, 0, 3, 1, 4).unbind(dim=0); dim_cat = 2               # q or k or v: BHLc
         
-        if self.cos_attn:
+        if self.attn_l2_norm:
             scale_mul = self.scale_mul_1H11.clamp_max(self.max_scale_mul).exp()
             if using_flash or self.using_xform: scale_mul = scale_mul.transpose(1, 2)  # 1H11 to 11H1
             q = F.normalize(q, dim=-1).mul(scale_mul)
@@ -121,20 +122,20 @@ class SelfAttention(nn.Module):
         # oup = (attn @ v).transpose_(1, 2).reshape(B, L, -1)     # BHLL @ BHLc = BHLc => BLHc => BLC
     
     def extra_repr(self) -> str:
-        return f'using_flash={self.using_flash}, using_xform={self.using_xform}, tau={self.tau}, cos_attn={self.cos_attn}'
+        return f'using_flash={self.using_flash}, using_xform={self.using_xform}, attn_l2_norm={self.attn_l2_norm}'
 
 
 class AdaLNSelfAttn(nn.Module):
     def __init__(
         self, block_idx, last_drop_p, embed_dim, cond_dim, shared_aln: bool, norm_layer,
-        num_heads, mlp_ratio=4., drop=0., attn_drop=0., drop_path=0., tau=4, cos_attn=False,
+        num_heads, mlp_ratio=4., drop=0., attn_drop=0., drop_path=0., attn_l2_norm=False,
         flash_if_available=False, fused_if_available=True,
     ):
         super(AdaLNSelfAttn, self).__init__()
         self.block_idx, self.last_drop_p, self.C = block_idx, last_drop_p, embed_dim
         self.C, self.D = embed_dim, cond_dim
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.attn = SelfAttention(block_idx=block_idx, embed_dim=embed_dim, num_heads=num_heads, attn_drop=attn_drop, proj_drop=drop, tau=tau, cos_attn=cos_attn, flash_if_available=flash_if_available)
+        self.attn = SelfAttention(block_idx=block_idx, embed_dim=embed_dim, num_heads=num_heads, attn_drop=attn_drop, proj_drop=drop, attn_l2_norm=attn_l2_norm, flash_if_available=flash_if_available)
         self.ffn = FFN(in_features=embed_dim, hidden_features=round(embed_dim * mlp_ratio), drop=drop, fused_if_available=fused_if_available)
         
         self.ln_wo_grad = norm_layer(embed_dim, elementwise_affine=False)

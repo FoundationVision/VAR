@@ -12,7 +12,7 @@ def build_vae_var(
     # VQVAE args
     V=4096, Cvae=32, ch=160, share_quant_resi=4,
     # VAR args
-    num_classes=1000, depth=16, shared_aln=False, tau=4, cos_attn=False,
+    num_classes=1000, depth=16, shared_aln=False, attn_l2_norm=True,
     flash_if_available=True, fused_if_available=True,
     init_adaln=0.5, init_adaln_gamma=1e-5, init_head=0.02, init_std=-1,    # init_std < 0: automated
 ) -> Tuple[VQVAE, VAR]:
@@ -30,7 +30,7 @@ def build_vae_var(
         vae_local=vae_local,
         num_classes=num_classes, depth=depth, embed_dim=width, num_heads=heads, drop_rate=0., attn_drop_rate=0., drop_path_rate=dpr,
         norm_eps=1e-6, shared_aln=shared_aln, cond_drop_rate=0.1,
-        tau=tau, cos_attn=cos_attn,
+        attn_l2_norm=attn_l2_norm,
         patch_nums=patch_nums,
         flash_if_available=flash_if_available, fused_if_available=fused_if_available,
     ).to(device)

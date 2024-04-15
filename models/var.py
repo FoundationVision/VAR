@@ -23,7 +23,7 @@ class VAR(nn.Module):
         self, vae_local: VQVAE,
         num_classes=1000, depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
         norm_eps=1e-6, shared_aln=False, cond_drop_rate=0.1,
-        tau=4, cos_attn=False,
+        attn_l2_norm=False,
         patch_nums=(1, 2, 3, 4, 5, 6, 8, 10, 13, 16),   # 10 steps by default
         flash_if_available=True, fused_if_available=True,
     ):
@@ -87,7 +87,7 @@ class VAR(nn.Module):
                 cond_dim=self.D, shared_aln=shared_aln,
                 block_idx=block_idx, embed_dim=self.C, norm_layer=norm_layer, num_heads=num_heads, mlp_ratio=mlp_ratio,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[block_idx], last_drop_p=0 if block_idx == 0 else dpr[block_idx-1],
-                tau=tau, cos_attn=cos_attn,
+                attn_l2_norm=attn_l2_norm,
                 flash_if_available=flash_if_available, fused_if_available=fused_if_available,
             )
             for block_idx in range(depth)
@@ -297,7 +297,7 @@ class VARHF(VAR, PyTorchModelHubMixin):
         vae_kwargs,
         num_classes=1000, depth=16, embed_dim=1024, num_heads=16, mlp_ratio=4., drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
         norm_eps=1e-6, shared_aln=False, cond_drop_rate=0.1,
-        tau=4, cos_attn=False,
+        attn_l2_norm=False,
         patch_nums=(1, 2, 3, 4, 5, 6, 8, 10, 13, 16),   # 10 steps by default
         flash_if_available=True, fused_if_available=True,
     ):
@@ -306,7 +306,7 @@ class VARHF(VAR, PyTorchModelHubMixin):
             vae_local=vae_local,
             num_classes=num_classes, depth=depth, embed_dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
             norm_eps=norm_eps, shared_aln=shared_aln, cond_drop_rate=cond_drop_rate,
-            tau=tau, cos_attn=cos_attn,
+            attn_l2_norm=attn_l2_norm,
             patch_nums=patch_nums,
             flash_if_available=flash_if_available, fused_if_available=fused_if_available,
         )
