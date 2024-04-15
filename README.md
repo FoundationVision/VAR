@@ -89,20 +89,23 @@ You can load these models to generate images via the codes in [demo_sample.ipynb
 
 ## Training Scripts
 
-To train VAR-d{16, 20, 24, 30} on ImageNet 256x256, you can run the following command:
+To train VAR-{d16, d20, d24, d30, d36-s} on ImageNet 256x256 or 512x512, you can run the following command:
 ```shell
-# d16
+# d16, 256x256
 torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
   --depth=16 --bs=768 --ep=200 --fp16=1 --alng=1e-3 --wpe=0.1
-# d20
+# d20, 256x256
 torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
   --depth=20 --bs=768 --ep=250 --fp16=1 --alng=1e-3 --wpe=0.1
-# d24
+# d24, 256x256
 torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
   --depth=24 --bs=768 --ep=350 --fp16=1 --alng=1e-4 --wpe=0.01
-# d30
+# d30, 256x256
 torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
-  --depth=30 --bs=1024 --ep=350 --fp16=1 --alng=1e-5 --wpe=0.01
+  --depth=30 --bs=1024 --ep=350 --fp16=1 --alng=1e-5 --wpe=0.01 --twde=0.08
+# d36-s, 512x512 (-s means saln=1, shared AdaLN)
+torchrun --nproc_per_node=8 --nnodes=... --node_rank=... --master_addr=... --master_port=... train.py \
+  --depth=36 --saln=1 --pn=512 --bs=768 --ep=350 --fp16=1 --alng=5e-6 --wpe=0.01 --twde=0.08
 ```
 A folder named `local_output` will be created to save the checkpoints and logs.
 You can monitor the training process by checking the logs in `local_output/log.txt` and `local_output/stdout.txt`, or using `tensorboard --logdir=local_output/`.
