@@ -34,7 +34,7 @@ class AmpOptimizer:
         self.early_clipping = self.grad_clip > 0 and not hasattr(optimizer, 'global_grad_norm')
         self.late_clipping = self.grad_clip > 0 and hasattr(optimizer, 'global_grad_norm')
         
-        self.r_accu = n_gradient_accumulation    # r_accu == 1.0 / n_gradient_accumulation
+        self.r_accu = 1 / n_gradient_accumulation   # r_accu == 1.0 / n_gradient_accumulation
     
     def backward_clip_step(
         self, stepping: bool, loss: torch.Tensor,
