@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import re
@@ -85,11 +86,17 @@ class Args(Tap):
     branch: str = subprocess.check_output(f'git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD', shell=True).decode('utf-8').strip() or '[unknown]' # [automatically set; don't specify this]
     commit_id: str = subprocess.check_output(f'git rev-parse HEAD', shell=True).decode('utf-8').strip() or '[unknown]'  # [automatically set; don't specify this]
     commit_msg: str = (subprocess.check_output(f'git log -1', shell=True).decode('utf-8').strip().splitlines() or ['[unknown]'])[-1].strip()    # [automatically set; don't specify this]
-    max_acc_mean: float = None  # [automatically set; don't specify this]
-    max_acc_tail: float = None  # [automatically set; don't specify this]
-    min_L_mean: float = None    # [automatically set; don't specify this]
-    min_L_tail: float = None    # [automatically set; don't specify this]
+    acc_mean: float = None      # [automatically set; don't specify this]
+    acc_tail: float = None      # [automatically set; don't specify this]
+    L_mean: float = None        # [automatically set; don't specify this]
+    L_tail: float = None        # [automatically set; don't specify this]
+    vacc_mean: float = None     # [automatically set; don't specify this]
+    vacc_tail: float = None     # [automatically set; don't specify this]
+    vL_mean: float = None       # [automatically set; don't specify this]
+    vL_tail: float = None       # [automatically set; don't specify this]
     grad_norm: float = None     # [automatically set; don't specify this]
+    cur_lr: float = None        # [automatically set; don't specify this]
+    cur_wd: float = None        # [automatically set; don't specify this]
     cur_it: str = ''            # [automatically set; don't specify this]
     cur_ep: str = ''            # [automatically set; don't specify this]
     remain_time: str = ''       # [automatically set; don't specify this]
@@ -167,6 +174,27 @@ class Args(Tap):
                 print(f'[tf32] [precis] torch.get_float32_matmul_precision(): {torch.get_float32_matmul_precision()}')
             print(f'[tf32] [ conv ] torch.backends.cudnn.allow_tf32: {torch.backends.cudnn.allow_tf32}')
             print(f'[tf32] [matmul] torch.backends.cuda.matmul.allow_tf32: {torch.backends.cuda.matmul.allow_tf32}')
+    
+    def dump_log(self):
+        if not dist.is_local_master():
+            return
+        if '1/' in self.cur_ep: # first time to dump log
+            with open(self.log_txt_path, 'w') as fp:
+                json.dump({'is_master': dist.is_master(), 'name': self.exp_name, 'cmd': self.cmd, 'commit': self.commit_id, 'branch': self.branch, 'tb_log_dir_path': self.tb_log_dir_path}, fp, indent=0)
+                fp.write('\n')
+        
+        log_dict = {}
+        for k, v in {
+            'it': self.cur_it, 'ep': self.cur_ep,
+            'lr': self.cur_lr, 'wd': self.cur_wd, 'grad_norm': self.grad_norm,
+            'L_mean': self.L_mean, 'L_tail': self.L_tail, 'acc_mean': self.acc_mean, 'acc_tail': self.acc_tail,
+            'vL_mean': self.vL_mean, 'vL_tail': self.vL_tail, 'vacc_mean': self.vacc_mean, 'vacc_tail': self.vacc_tail,
+            'remain_time': self.remain_time, 'finish_time': self.finish_time,
+        }.items():
+            if hasattr(v, 'item'): v = v.item()
+            log_dict[k] = v
+        with open(self.log_txt_path, 'a') as fp:
+            fp.write(f'{log_dict}\n')
     
     def __str__(self):
         s = []

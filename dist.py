@@ -83,10 +83,6 @@ def is_local_master():
     return __local_rank == 0
 
 
-def is_visualizer():
-    return __rank == 0
-
-
 def new_group(ranks: List[int]):
     if __initialized:
         return tdist.new_group(ranks=ranks)
@@ -201,7 +197,7 @@ def local_master_only(func):
 def for_visualize(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        if is_visualizer():
+        if is_master():
             # with torch.no_grad():
             ret = func(*args, **kwargs)
         else:

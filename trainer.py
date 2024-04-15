@@ -19,7 +19,7 @@ BTen = torch.BoolTensor
 
 class VARTrainer(object):
     def __init__(
-        self, is_visualizer: bool, device, patch_nums: Tuple[int, ...], resos: Tuple[int, ...],
+        self, is_master: bool, device, patch_nums: Tuple[int, ...], resos: Tuple[int, ...],
         vae_local: VQVAE, var_wo_ddp: VAR, var: DDP,
         var_opt: AmpOptimizer, label_smooth: float,
     ):
@@ -29,8 +29,6 @@ class VARTrainer(object):
         self.quantize_local: VectorQuantizer2
         self.var_wo_ddp: VAR = var_wo_ddp  # after torch.compile
         self.var_opt = var_opt
-        
-        self.is_visualizer = is_visualizer
         
         del self.var_wo_ddp.rng
         self.var_wo_ddp.rng = torch.Generator(device=device)
@@ -112,12 +110,12 @@ class VARTrainer(object):
             self.var_wo_ddp.forward
             logits_BLV = self.var(label_B, x_BLCv_wo_first_l)
             loss = self.train_loss(logits_BLV.view(-1, V), gt_BL.view(-1)).view(B, -1)
-            if prog_si >= 0:
+            if prog_si >= 0:    # in progressive training
                 bg, ed = self.begin_ends[prog_si]
                 assert logits_BLV.shape[1] == gt_BL.shape[1] == ed
                 lw = self.loss_weight[:, :ed].clone()
                 lw[:, bg:ed] *= min(max(prog_wp, 0), 1)
-            else:
+            else:               # not in progressive training
                 lw = self.loss_weight
             loss = loss.mul(lw).sum(dim=-1).mean()
         
@@ -126,33 +124,27 @@ class VARTrainer(object):
         
         # log
         pred_BL = logits_BLV.data.argmax(dim=-1)
-        if it in metric_lg.log_iters:
+        if it == 0 or it in metric_lg.log_iters:
             Lmean = self.val_loss(logits_BLV.data.view(-1, V), gt_BL.view(-1)).item()
             acc_mean = (pred_BL == gt_BL).float().mean().item() * 100
-            if prog_si < 0:
+            if prog_si >= 0:    # in progressive training
+                Ltail = acc_tail = -1
+            else:               # not in progressive training
                 Ltail = self.val_loss(logits_BLV.data[:, -self.last_l:].reshape(-1, V), gt_BL[:, -self.last_l:].reshape(-1)).item()
                 acc_tail = (pred_BL[:, -self.last_l:] == gt_BL[:, -self.last_l:]).float().mean().item() * 100
-            else:
-                Ltail = acc_tail = -1
             grad_norm = grad_norm.item()
             metric_lg.update(Lm=Lmean, Lt=Ltail, Accm=acc_mean, Acct=acc_tail, tnm=grad_norm)
         
+        # log to tensorboard
         if g_it == 0 or (g_it + 1) % 500 == 0:
-            if g_it == 0:
-                prob_per_class_is_chosen = gt_BL.view(-1).bincount(minlength=V).float()
-                dist.allreduce(prob_per_class_is_chosen)
-                if self.is_visualizer:
-                    prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
-                    cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
-                    tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-10000)
-                    tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-1000)
-            
             prob_per_class_is_chosen = pred_BL.view(-1).bincount(minlength=V).float()
             dist.allreduce(prob_per_class_is_chosen)
-            
-            if self.is_visualizer:
-                prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
-                cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
+            prob_per_class_is_chosen /= prob_per_class_is_chosen.sum()
+            cluster_usage = (prob_per_class_is_chosen > 0.001 / V).float().mean().item() * 100
+            if dist.is_master():
+                if g_it == 0:
+                    tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-10000)
+                    tb_lg.update(head='AR_iter_loss', z_voc_usage=cluster_usage, step=-1000)
                 kw = dict(z_voc_usage=cluster_usage)
                 for si, (bg, ed) in enumerate(self.begin_ends):
                     if 0 <= prog_si < si: break

@@ -1,20 +1,19 @@
 import gc
 import os
-import random
+import shutil
 import sys
 import time
 import warnings
 from functools import partial
 
-import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
 import dist
-from utils.misc import auto_resume
 from utils import arg_util, misc
 from utils.data import build_dataset
 from utils.data_sampler import DistInfiniteBatchSampler, EvalDistributedSampler
+from utils.misc import auto_resume
 
 
 def build_everything(args: arg_util.Args):
@@ -22,7 +21,7 @@ def build_everything(args: arg_util.Args):
     auto_resume_info, start_ep, start_it, trainer_state, args_state = auto_resume(args, 'ar-ckpt*.pth')
     # create tensorboard logger
     tb_lg: misc.TensorboardLogger
-    with_tb_lg = dist.is_visualizer()
+    with_tb_lg = dist.is_master()
     if with_tb_lg:
         os.makedirs(args.tb_log_dir_path, exist_ok=True)
         # noinspection PyTypeChecker
@@ -130,7 +129,7 @@ def build_everything(args: arg_util.Args):
     
     # build trainer
     trainer = VARTrainer(
-        is_visualizer=dist.is_visualizer(), device=args.device, patch_nums=args.patch_nums, resos=args.resos,
+        device=args.device, patch_nums=args.patch_nums, resos=args.resos,
         vae_local=vae_local, var_wo_ddp=var_wo_ddp, var=var,
         var_opt=var_optim, label_smooth=args.ls,
     )
@@ -157,7 +156,7 @@ def build_everything(args: arg_util.Args):
         )
         print({k: meter.global_avg for k, meter in me.meters.items()})
         
-        tb_lg.flush(); tb_lg.close()
+        args.dump_log(); tb_lg.flush(); tb_lg.close()
         if isinstance(sys.stdout, misc.SyncPrint) and isinstance(sys.stderr, misc.SyncPrint):
             sys.stdout.close(), sys.stderr.close()
         exit(0)
@@ -169,7 +168,7 @@ def build_everything(args: arg_util.Args):
     )
 
 
-def main():
+def main_training():
     args: arg_util.Args = arg_util.init_dist_and_get_args()
     if args.local_debug:
         torch.autograd.set_detect_anomaly(True)
@@ -181,9 +180,9 @@ def main():
     ) = build_everything(args)
     
     # train
-    start_time, min_L_mean, min_L_tail, max_acc_mean, max_acc_tail = time.time(), 999., 999., -1., -1.
-    last_val_loss_mean, best_val_loss_mean, last_val_acc_mean, best_val_acc_mean = 999, 999, 0, 0
-    last_val_loss_tail, best_val_loss_tail, last_val_acc_tail, best_val_acc_tail = 999, 999, 0, 0
+    start_time = time.time()
+    best_L_mean, best_L_tail, best_acc_mean, best_acc_tail = 999., 999., -1., -1.
+    best_val_loss_mean, best_val_loss_tail, best_val_acc_mean, best_val_acc_tail = 999, 999, -1, -1
     
     L_mean, L_tail = -1, -1
     for ep in range(start_ep, args.ep):
@@ -199,49 +198,46 @@ def main():
         )
         
         L_mean, L_tail, acc_mean, acc_tail, grad_norm = stats['Lm'], stats['Lt'], stats['Accm'], stats['Acct'], stats['tnm']
-        min_L_mean, max_acc_mean, max_acc_tail = min(min_L_mean, L_mean), max(max_acc_mean, acc_mean), max(max_acc_tail, acc_tail)
-        if L_tail != -1:
-            min_L_tail = min(min_L_tail, L_tail)
-        args.min_L_mean, args.min_L_tail, args.max_acc_mean, args.max_acc_tail, args.grad_norm = min_L_mean, min_L_tail, (None if max_acc_mean < 0 else max_acc_mean), (None if max_acc_tail < 0 else max_acc_tail), grad_norm
+        best_L_mean, best_acc_mean = min(best_L_mean, L_mean), max(best_acc_mean, acc_mean)
+        if L_tail != -1: best_L_tail, best_acc_tail = min(best_L_tail, L_tail), max(best_acc_tail, acc_tail)
+        args.L_mean, args.L_tail, args.acc_mean, args.acc_tail, args.grad_norm = L_mean, L_tail, acc_mean, acc_tail, grad_norm
         args.cur_ep = f'{ep+1}/{args.ep}'
         args.remain_time, args.finish_time = remain_time, finish_time
         
-        AR_ep_loss = {}
+        AR_ep_loss = dict(L_mean=L_mean, L_tail=L_tail, acc_mean=acc_mean, acc_tail=acc_tail)
         is_val_and_also_saving = (ep + 1) % 10 == 0 or (ep + 1) == args.ep
         if is_val_and_also_saving:
-            last_val_loss_mean, last_val_loss_tail, last_val_acc_mean, last_val_acc_tail, tot, cost = trainer.eval_ep(ld_val)
-            best_val_loss_mean, best_val_loss_tail = min(best_val_loss_mean, last_val_loss_mean), min(best_val_loss_tail, last_val_loss_tail)
-            best_val_acc_mean, best_val_acc_tail = max(best_val_acc_mean, last_val_acc_mean), max(best_val_acc_tail, last_val_acc_tail)
-            AR_ep_loss['vL_mean'], AR_ep_loss['vL_tail'], AR_ep_loss['vacc_mean'], AR_ep_loss['vacc_tail'] = last_val_loss_mean, last_val_loss_tail, last_val_acc_mean, last_val_acc_tail
+            val_loss_mean, val_loss_tail, val_acc_mean, val_acc_tail, tot, cost = trainer.eval_ep(ld_val)
+            best_updated = best_val_loss_tail > val_loss_tail
+            best_val_loss_mean, best_val_loss_tail = min(best_val_loss_mean, val_loss_mean), min(best_val_loss_tail, val_loss_tail)
+            best_val_acc_mean, best_val_acc_tail = max(best_val_acc_mean, val_acc_mean), max(best_val_acc_tail, val_acc_tail)
+            AR_ep_loss.update(vL_mean=val_loss_mean, vL_tail=val_loss_tail, vacc_mean=val_acc_mean, vacc_tail=val_acc_tail)
+            args.vL_mean, args.vL_tail, args.vacc_mean, args.vacc_tail = val_loss_mean, val_loss_tail, val_acc_mean, val_acc_tail
             print(f' [*] [ep{ep}]  (val {tot})  Lm: {L_mean:.4f}, Lt: {L_tail:.4f}, Acc m&t: {acc_mean:.2f} {acc_tail:.2f},  Val cost: {cost:.2f}s')
+            
+            if dist.is_local_master():
+                local_out_ckpt = os.path.join(args.local_out_dir_path, 'ar-ckpt-last.pth')
+                local_out_ckpt_best = os.path.join(args.local_out_dir_path, 'ar-ckpt-best.pth')
+                print(f'[saving ckpt] ...', end='', flush=True)
+                torch.save({
+                    'epoch':    ep+1,
+                    'iter':     0,
+                    'trainer':  trainer.state_dict(),
+                    'args':     args.state_dict(),
+                }, local_out_ckpt)
+                if best_updated:
+                    shutil.copy(local_out_ckpt, local_out_ckpt_best)
+                print(f'     [saving ckpt](*) finished!  @ {local_out_ckpt}', flush=True, clean=True)
+            dist.barrier()
         
-        print(    f'     [ep{ep}]  (training )  Lm: {min_L_mean:.3f} ({L_mean:.3f}), Lt: {min_L_tail:.3f} ({L_tail:.3f}),  Acc m&t: {max_acc_mean:.2f} {max_acc_tail:.2f},  Remain: {remain_time},  Finish: {finish_time}', flush=True)
-        if ep > args.ep // 20 and min_L_tail < 99:
-            tb_lg.update(head='AR_y_result', step=ep+1, min_L_mean=min_L_mean, min_L_tail=min_L_tail, max_acc_mean=max_acc_mean, max_acc_tail=max_acc_tail)
-        
-        AR_ep_loss['L_mean'], AR_ep_loss['L_tail'], AR_ep_loss['acc_mean'], AR_ep_loss['acc_tail'] = L_mean, L_tail, acc_mean, acc_tail
+        print(    f'     [ep{ep}]  (training )  Lm: {best_L_mean:.3f} ({L_mean:.3f}), Lt: {best_L_tail:.3f} ({L_tail:.3f}),  Acc m&t: {best_acc_mean:.2f} {best_acc_tail:.2f},  Remain: {remain_time},  Finish: {finish_time}', flush=True)
         tb_lg.update(head='AR_ep_loss', step=ep+1, **AR_ep_loss)
         tb_lg.update(head='AR_z_burnout', step=ep+1, rest_hours=round(sec / 60 / 60, 2))
-        
-        if is_val_and_also_saving and dist.is_master():
-            local_out_ckpt = os.path.join(args.local_out_dir_path, 'ar-ckpt-last.pth')
-            torch.save({
-                'epoch':    ep+1,
-                'iter':     0,
-                'trainer':  trainer.state_dict(),
-                'args':     args.state_dict(),
-            }, local_out_ckpt)
-        
-        tb_lg.flush()
-        dist.barrier()
-    
-    tb_lg.update(head='AR_y_result_final', step=start_ep, min_L_mean=min_L_mean, min_L_tail=min_L_tail, max_acc_mean=max_acc_mean, max_acc_tail=max_acc_tail)
-    tb_lg.update(head='AR_y_result_final', step=args.ep, min_L_mean=min_L_mean, min_L_tail=min_L_tail, max_acc_mean=max_acc_mean, max_acc_tail=max_acc_tail)
-    tb_lg.flush()
+        args.dump_log(); tb_lg.flush()
     
     total_time = f'{(time.time() - start_time) / 60 / 60:.1f}h'
     print('\n\n')
-    print(f'  [*] [PT finished]  Total Time: {total_time},   Lm: {min_L_mean:.3f} ({L_mean}),   Lt: {min_L_tail:.3f} ({L_tail})')
+    print(f'  [*] [PT finished]  Total cost: {total_time},   Lm: {best_L_mean:.3f} ({L_mean}),   Lt: {best_L_tail:.3f} ({L_tail})')
     print('\n\n')
     
     del stats
@@ -250,7 +246,7 @@ def main():
     
     args.remain_time, args.finish_time = '-', time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - 60))
     print(f'final args:\n\n{str(args)}')
-    tb_lg.flush(); tb_lg.close()
+    args.dump_log(); tb_lg.flush(); tb_lg.close()
     dist.barrier()
 
 
@@ -285,6 +281,7 @@ def train_one_ep(ep: int, is_first_ep: bool, start_it: int, args: arg_util.Args,
         
         wp_it = args.wp * iters_train
         min_tlr, max_tlr, min_twd, max_twd = lr_wd_annealing(args.sche, trainer.var_opt.optimizer, args.tlr, args.twd, args.twde, g_it, wp_it, max_it, wp0=args.wp0, wpe=args.wpe)
+        args.cur_lr, args.cur_wd = max_tlr, max_twd
         
         if args.pg: # default: 0.0, no progressive training, won't get into this
             if g_it <= wp_it: prog_si = args.pg0
@@ -310,8 +307,7 @@ def train_one_ep(ep: int, is_first_ep: bool, start_it: int, args: arg_util.Args,
         tb_lg.update(head='AR_opt_lr/lr_max', sche_tlr=max_tlr)
         tb_lg.update(head='AR_opt_wd/wd_max', sche_twd=max_twd)
         tb_lg.update(head='AR_opt_wd/wd_min', sche_twd=min_twd)
-        if scale_log2 is not None:
-            tb_lg.update(head='AR_opt_grad/fp16', scale_log2=scale_log2)
+        tb_lg.update(head='AR_opt_grad/fp16', scale_log2=scale_log2)
         
         if args.tclip > 0:
             tb_lg.update(head='AR_opt_grad/grad', grad_norm=grad_norm)
@@ -335,18 +331,7 @@ class NullDDP(torch.nn.Module):
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as err:
-        time.sleep(dist.get_rank() * 1 + random.random() * 0.5)
-        try:
-            # noinspection PyArgumentList
-            print(f'[rk{dist.get_rank():2d}] {type(err).__name__}', flush=True, force=True)
-        except:
-            try: print(f'[rk{dist.get_rank():2d}] {type(err).__name__}', flush=True)
-            except: pass
-        if dist.is_master(): print(f'[err]:\n{err}')
-        raise err
+    try: main_training()
     finally:
         dist.finalize()
         if isinstance(sys.stdout, misc.SyncPrint) and isinstance(sys.stderr, misc.SyncPrint):
