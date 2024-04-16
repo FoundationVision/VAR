@@ -40,7 +40,7 @@ def build_everything(args: arg_util.Args):
     if not args.local_debug:
         print(f'[build PT data] ...\n')
         num_classes, dataset_train, dataset_val = build_dataset(
-            args.data_path, args.data_name, final_reso=args.data_load_reso, hflip=args.hflip, mid_reso=args.mid_reso,
+            args.data_path, final_reso=args.data_load_reso, hflip=args.hflip, mid_reso=args.mid_reso,
         )
         types = str((type(dataset_train).__name__, type(dataset_val).__name__))
         

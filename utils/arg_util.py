@@ -24,7 +24,6 @@ import dist
 
 class Args(Tap):
     data_path: str = '/path/to/imagenet'
-    data_name: str = 'imagenet'
     exp_name: str = 'text'
     
     # VAE
@@ -220,6 +219,9 @@ def init_dist_and_get_args():
         args.afuse = False
         args.pg = 0.8
         args.pg0 = 1
+    else:
+        if args.data_path == '/path/to/imagenet':
+            raise ValueError(f'{"*"*40}  please specify --data_path=/path/to/imagenet  {"*"*40}')
     
     # warn args.extra_args
     if len(args.extra_args) > 0:

@@ -10,7 +10,7 @@ def normalize_01_into_pm1(x):  # normalize x from [0, 1] to [-1, 1] by (x*2) - 1
 
 
 def build_dataset(
-    data_path: str, data_name: str, final_reso: int,
+    data_path: str, final_reso: int,
     hflip=False, mid_reso=1.125,
 ):
     # build augmentations
@@ -31,7 +31,7 @@ def build_dataset(
     train_set = DatasetFolder(root=osp.join(data_path, 'train'), loader=pil_loader, extensions=IMG_EXTENSIONS, transform=train_aug)
     val_set = DatasetFolder(root=osp.join(data_path, 'val'), loader=pil_loader, extensions=IMG_EXTENSIONS, transform=val_aug)
     num_classes = 1000
-    print(f'[Dataset] {data_name=}, {len(train_set)=}, {len(val_set)=}, {num_classes=}')
+    print(f'[Dataset] {len(train_set)=}, {len(val_set)=}, {num_classes=}')
     print_aug(train_aug, '[train]')
     print_aug(val_aug, '[val]')
     
