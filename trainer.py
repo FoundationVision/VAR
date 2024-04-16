@@ -19,7 +19,7 @@ BTen = torch.BoolTensor
 
 class VARTrainer(object):
     def __init__(
-        self, is_master: bool, device, patch_nums: Tuple[int, ...], resos: Tuple[int, ...],
+        self, device, patch_nums: Tuple[int, ...], resos: Tuple[int, ...],
         vae_local: VQVAE, var_wo_ddp: VAR, var: DDP,
         var_opt: AmpOptimizer, label_smooth: float,
     ):
