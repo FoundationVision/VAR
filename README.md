@@ -84,7 +84,27 @@ You can load these models to generate images via the codes in [demo_sample.ipynb
 
 1. Install `torch>=2.0.0`.
 2. Install other pip packages via `pip3 install -r requirements.txt`.
-3. (Optional) install and compile `flash-attn` and `xformers` for faster attention computation. Our code will automatically use them if installed. See [models/basic_var.py#L15-L30](models/basic_var.py#L15-L30).
+3. Prepare the [ImageNet](http://image-net.org/) dataset
+    <details>
+    <summary> assume the ImageNet is in `/path/to/imagenet`. It should be like this:</summary>
+
+    ```
+    /path/to/imagenet/:
+        train/:
+            n01440764: 
+                many_images.JPEG ...
+            n01443537:
+                many_images.JPEG ...
+        val/:
+            n01440764:
+                ILSVRC2012_val_00000293.JPEG ...
+            n01443537:
+                ILSVRC2012_val_00000236.JPEG ...
+    ```
+   **NOTE: The arg `--data_path=/path/to/imagenet` should be passed to the training script.**
+    </details>
+
+5. (Optional) install and compile `flash-attn` and `xformers` for faster attention computation. Our code will automatically use them if installed. See [models/basic_var.py#L15-L30](models/basic_var.py#L15-L30).
 
 
 ## Training Scripts
