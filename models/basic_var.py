@@ -91,6 +91,7 @@ class SelfAttention(nn.Module):
         B, L, C = x.shape
         
         qkv = F.linear(input=x, weight=self.mat_qkv.weight, bias=torch.cat((self.q_bias, self.zero_k_bias, self.v_bias))).view(B, L, 3, self.num_heads, self.head_dim)
+        main_type = qkv.dtype
         # qkv: BL3Hc
         
         using_flash = self.using_flash and attn_bias is None and qkv.dtype != torch.float32
@@ -109,8 +110,7 @@ class SelfAttention(nn.Module):
         
         dropout_p = self.attn_drop if self.training else 0.0
         if using_flash:
-            assert attn_bias is None and qkv.dtype != torch.float32
-            oup = flash_attn_func(q, k, v, dropout_p=dropout_p, softmax_scale=self.scale).view(B, L, C)
+            oup = flash_attn_func(q.to(dtype=main_type), k.to(dtype=main_type), v.to(dtype=main_type), dropout_p=dropout_p, softmax_scale=self.scale).view(B, L, C)
         elif self.using_xform:
             oup = memory_efficient_attention(q, k, v, attn_bias=None if attn_bias is None else attn_bias.to(dtype=q.dtype).expand(B, self.num_heads, -1, -1), p=dropout_p, scale=self.scale).view(B, L, C)
         else:
