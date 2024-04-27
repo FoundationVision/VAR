@@ -283,7 +283,7 @@ def train_one_ep(ep: int, is_first_ep: bool, start_it: int, args: arg_util.Args,
         min_tlr, max_tlr, min_twd, max_twd = lr_wd_annealing(args.sche, trainer.var_opt.optimizer, args.tlr, args.twd, args.twde, g_it, wp_it, max_it, wp0=args.wp0, wpe=args.wpe)
         args.cur_lr, args.cur_wd = max_tlr, max_twd
         
-        if args.pg: # default: 0.0, no progressive training, won't get into this
+        if args.pg: # default: args.pg == 0.0, means no progressive training, won't get into this
             if g_it <= wp_it: prog_si = args.pg0
             elif g_it >= max_it*args.pg: prog_si = len(args.patch_nums) - 1
             else:
@@ -312,9 +312,6 @@ def train_one_ep(ep: int, is_first_ep: bool, start_it: int, args: arg_util.Args,
         if args.tclip > 0:
             tb_lg.update(head='AR_opt_grad/grad', grad_norm=grad_norm)
             tb_lg.update(head='AR_opt_grad/grad', grad_clip=args.tclip)
-            # t_ratio = 1 if grad_norm is None else min(1.0, args.tclip / (grad_norm + 1e-7))
-            # tb_lg.update(head='AR_opt_lr/lr_max', actu_tlr=t_ratio*max_tlr)
-            # tb_lg.update(head='AR_opt_lr/lr_min', actu_tlr=t_ratio*min_tlr)
     
     me.synchronize_between_processes()
     return {k: meter.global_avg for k, meter in me.meters.items()}, me.iter_time.time_preds(max_it - (g_it + 1) + (args.ep - ep) * 15)  # +15: other cost

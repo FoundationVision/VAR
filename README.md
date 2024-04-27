@@ -134,9 +134,11 @@ If your experiment is interrupted, just rerun the command, and the training will
 
 ## Sampling & Zero-shot Inference
 
-For evaluation, sample images from VAR-d{16, 20, 24, 30} by using `top_p=0.96`, `top_k=900`, and `cfg=1.5`.
-Note this `cfg` is small for a trade-off between quality and diversity. You can adjust it to `cfg=5.0` for better quality.
-We'll provide the sampling script soon.
+For FID evaluation, use `var.autoregressive_infer_cfg(..., cfg=1.5, top_p=0.96, top_k=900, more_smooth=False)` to sample 50,000 images (50 per class) and save them as PNG (not JPEG) files in a folder. Pack them into a `.npz` file via `create_npz_from_sample_folder(sample_folder)` in [utils/misc.py#L344](utils/misc.py#L360).
+Then use the [OpenAI's FID evaluation toolkit](https://github.com/openai/guided-diffusion/tree/main/evaluations) and reference ground truth npz file of [256x256](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/ref_batches/imagenet/256/VIRTUAL_imagenet256_labeled.npz) or [512x512](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/ref_batches/imagenet/512/VIRTUAL_imagenet512.npz) to evaluate FID, IS, precision, and recall.
+
+Note a relatively small `cfg=1.5` is used for trade-off between image quality and diversity. You can adjust it to `cfg=5.0`, or sample with `autoregressive_infer_cfg(..., more_smooth=True)` for **better visual quality**.
+We'll provide the sampling script later.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

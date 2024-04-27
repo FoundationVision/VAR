@@ -173,9 +173,9 @@ class VAR(nn.Module):
             logits_BlV = (1+t) * logits_BlV[:B] - t * logits_BlV[B:]
             
             idx_Bl = sample_with_top_k_top_p_(logits_BlV, rng=rng, top_k=top_k, top_p=top_p, num_samples=1)[:, :, 0]
-            if not more_smooth:
+            if not more_smooth: # this is the default case
                 h_BChw = self.vae_quant_proxy[0].embedding(idx_Bl)   # B, l, Cvae
-            else:
+            else:   # not used when evaluating FID/IS/Precision/Recall
                 gum_t = max(0.27 * (1 - ratio * 0.95), 0.005)   # refer to mask-git
                 h_BChw = gumbel_softmax_with_rng(logits_BlV.mul(1 + ratio), tau=gum_t, hard=False, dim=-1, rng=rng) @ self.vae_quant_proxy[0].embedding.weight.unsqueeze(0)
             

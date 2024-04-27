@@ -8,7 +8,7 @@ from torch.nn import functional as F
 import dist
 
 
-# this file only defines the VectorQuantizer2 used in VQVAE
+# this file only provides the VectorQuantizer2 used in VQVAE
 __all__ = ['VectorQuantizer2',]
 
 
@@ -120,8 +120,8 @@ class VectorQuantizer2(nn.Module):
                 if last_one: ls_f_hat_BChw = f_hat
                 else: ls_f_hat_BChw.append(f_hat.clone())
         else:
-            # WARNING: this is not the case in VQ-VAE training (where we'll interpolate every token map to the max scale), so it may cause some training-inference inconsistency
-            # WARNING: this should only be used for experimental visualization
+            # WARNING: this is not the case in VQ-VAE training or inference (we'll interpolate every token map to the max H W, like above)
+            # WARNING: this should only be used for experimental purpose
             f_hat = ms_h_BChw[0].new_zeros(B, self.Cvae, self.v_patch_nums[0], self.v_patch_nums[0], dtype=torch.float32)
             for si, pn in enumerate(self.v_patch_nums): # from small to large
                 f_hat = F.interpolate(f_hat, size=(pn, pn), mode='bicubic')

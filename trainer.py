@@ -87,7 +87,7 @@ class VARTrainer(object):
         self, it: int, g_it: int, stepping: bool, metric_lg: MetricLogger, tb_lg: TensorboardLogger,
         inp_B3HW: FTen, label_B: Union[ITen, FTen], prog_si: int, prog_wp_it: float,
     ) -> Tuple[Optional[Union[Ten, float]], Optional[float]]:
-        # progressive training
+        # if progressive training
         self.var_wo_ddp.prog_si = self.vae_local.quantize.prog_si = prog_si
         if self.last_prog_si != prog_si:
             if self.last_prog_si != -1: self.first_prog = False
