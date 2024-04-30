@@ -55,8 +55,8 @@ class VQVAE(nn.Module):
     # ===================== `forward` is only used in VAE training =====================
     def forward(self, inp, ret_usages=False):   # -> rec_B3HW, idx_N, loss
         VectorQuantizer2.forward
-        h_BChw, usages, vq_loss, mean_entropy_loss = self.quantize(self.quant_conv(self.encoder(inp)), ret_usages=ret_usages)
-        return self.decoder(self.post_quant_conv(h_BChw)), usages, vq_loss, mean_entropy_loss
+        f_hat, usages, vq_loss = self.quantize(self.quant_conv(self.encoder(inp)), ret_usages=ret_usages)
+        return self.decoder(self.post_quant_conv(f_hat)), usages, vq_loss
     # ===================== `forward` is only used in VAE training =====================
     
     def fhat_to_img(self, f_hat: torch.Tensor):
