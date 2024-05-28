@@ -1,10 +1,12 @@
 import math
 from functools import partial
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import torch
 import torch.nn as nn
+
 from huggingface_hub import PyTorchModelHubMixin
+from torch.nn import functional as F
 
 import dist
 from models.basic_var import AdaLNBeforeHead, AdaLNSelfAttn
@@ -42,7 +44,7 @@ class VAR(nn.Module):
         self.begin_ends = []
         cur = 0
         for i, pn in enumerate(self.patch_nums):
-            self.begin_ends.append((cur, cur+pn ** 2))
+            self.begin_ends.append((cur, cur+pn ** 2)) # begins and ends of each level of token pyramid in the whole token sequence
             cur += pn ** 2
         
         self.num_stages_minus_1 = len(self.patch_nums) - 1
@@ -71,7 +73,8 @@ class VAR(nn.Module):
             pos_1LC.append(pe)
         pos_1LC = torch.cat(pos_1LC, dim=1)     # 1, L, C
         assert tuple(pos_1LC.shape) == (1, self.L, self.C)
-        self.pos_1LC = nn.Parameter(pos_1LC)
+        self.pos_1LC = nn.Parameter(pos_1LC) # positional encoding
+
         # level embedding (similar to GPT's segment embedding, used to distinguish different levels of token pyramid)
         self.lvl_embed = nn.Embedding(len(self.patch_nums), self.C)
         nn.init.trunc_normal_(self.lvl_embed.weight.data, mean=0, std=init_std)
@@ -148,46 +151,166 @@ class VAR(nn.Module):
         elif isinstance(label_B, int):
             label_B = torch.full((B,), fill_value=self.num_classes if label_B < 0 else label_B, device=self.lvl_1L.device)
         
+        # class embedding
         sos = cond_BD = self.class_emb(torch.cat((label_B, torch.full_like(label_B, fill_value=self.num_classes)), dim=0))
         
+        print(f'[autoregressive_infer_cfg]\n {label_B=}\n, {sos.shape=}\n, {cond_BD.shape=}\n')
+
+        print(f'sos elementwise mean {sos.mean(dim=1)}') # the last half of the vectors are just random values (class embedding of number of classes)
+
+
         lvl_pos = self.lvl_embed(self.lvl_1L) + self.pos_1LC
-        next_token_map = sos.unsqueeze(1).expand(2 * B, self.first_l, -1) + self.pos_start.expand(2 * B, self.first_l, -1) + lvl_pos[:, :self.first_l]
+        next_token_map = (
+            sos.unsqueeze(1).expand(2 * B, self.first_l, -1) # 2B, l, Cvae; class conditioning
+            + self.pos_start.expand(2 * B, self.first_l, -1) # 2B, l, Cvae; positional encoding
+            + lvl_pos[:, :self.first_l]  # level encoding
+        )
+
+        # so next token map is the first token map, which is the class embedding + positional encoding + level encoding
+
+        print(f'next_token_map: {next_token_map.shape=}\n {next_token_map.dtype=}\n {next_token_map.device=}\n')
         
         cur_L = 0
         f_hat = sos.new_zeros(B, self.Cvae, self.patch_nums[-1], self.patch_nums[-1])
+
+        print(f'[autoregressive_infer_cfg] {f_hat.shape=}\n, {next_token_map.shape=}\n')
         
         for b in self.blocks: b.attn.kv_caching(True)
-        for si, pn in enumerate(self.patch_nums):   # si: i-th segment
-            ratio = si / self.num_stages_minus_1
-            # last_L = cur_L
-            cur_L += pn*pn
-            # assert self.attn_bias_for_masking[:, :, last_L:cur_L, :cur_L].sum() == 0, f'AR with {(self.attn_bias_for_masking[:, :, last_L:cur_L, :cur_L] != 0).sum()} / {self.attn_bias_for_masking[:, :, last_L:cur_L, :cur_L].numel()} mask item'
-            cond_BD_or_gss = self.shared_ada_lin(cond_BD)
+
+        for si, pn in enumerate(self.patch_nums):   # si: i-th segment, si=0: first segment
+            ratio = si / self.num_stages_minus_1 # processed ratio: 0.0 ~ 1.0, how much has been processed
+            
+            cur_L += pn*pn # cur_L: current length of token sequence
+            
+            cond_BD_or_gss = self.shared_ada_lin(cond_BD) # shared_ada_lin: SiLU + AdaLin
+            
             x = next_token_map
-            AdaLNSelfAttn.forward
+
+            # refine the token map via self attention and feed forward network
             for b in self.blocks:
                 x = b(x=x, cond_BD=cond_BD_or_gss, attn_bias=None)
+            
             logits_BlV = self.get_logits(x, cond_BD)
+
+            t = cfg * ratio # t: guidance ratio -- rises over time from 0.0 to cfg
+            logits_BlV = (1+t) * logits_BlV[:B] - t * logits_BlV[B:]  # B, l, V
             
-            t = cfg * ratio
-            logits_BlV = (1+t) * logits_BlV[:B] - t * logits_BlV[B:]
-            
+            # Sample from the rk logits
             idx_Bl = sample_with_top_k_top_p_(logits_BlV, rng=rng, top_k=top_k, top_p=top_p, num_samples=1)[:, :, 0]
+
+
             if not more_smooth: # this is the default case
-                h_BChw = self.vae_quant_proxy[0].embedding(idx_Bl)   # B, l, Cvae
+                h_BChw = self.vae_quant_proxy[0].embedding(idx_Bl)   # shape
             else:   # not used when evaluating FID/IS/Precision/Recall
                 gum_t = max(0.27 * (1 - ratio * 0.95), 0.005)   # refer to mask-git
                 h_BChw = gumbel_softmax_with_rng(logits_BlV.mul(1 + ratio), tau=gum_t, hard=False, dim=-1, rng=rng) @ self.vae_quant_proxy[0].embedding.weight.unsqueeze(0)
+
+            print(f'[autoregressive_infer_cfg]\n {si=}\n {x.shape=}\n {logits_BlV.shape=}\n {idx_Bl.shape=}\n {h_BChw.shape=}\n')
             
+
+            # h_BChw is now the zk before interpolation
             h_BChw = h_BChw.transpose_(1, 2).reshape(B, self.Cvae, pn, pn)
-            f_hat, next_token_map = self.vae_quant_proxy[0].get_next_autoregressive_input(si, len(self.patch_nums), f_hat, h_BChw)
+            f_hat, next_token_map = self.vae_quant_proxy[0].get_next_autoregressive_input(si, len(self.patch_nums), f_hat, h_BChw) # upscale the h_BChw, add to f_hat and downscale the token map
+
+
+            print(f'[autoregressive_infer_cfg_2]\n {h_BChw.shape=}\n {f_hat.shape=}\n {next_token_map.shape=}\n')
+            
+
             if si != self.num_stages_minus_1:   # prepare for next stage
                 next_token_map = next_token_map.view(B, self.Cvae, -1).transpose(1, 2)
                 next_token_map = self.word_embed(next_token_map) + lvl_pos[:, cur_L:cur_L + self.patch_nums[si+1] ** 2]
                 next_token_map = next_token_map.repeat(2, 1, 1)   # double the batch sizes due to CFG
         
         for b in self.blocks: b.attn.kv_caching(False)
+
         return self.vae_proxy[0].fhat_to_img(f_hat).add_(1).mul_(0.5)   # de-normalize, from [-1, 1] to [0, 1]
+    
+    def autoregressive_single_step_prediction(self, quant_pyramid: List[torch.Tensor], f_hat: torch.Tensor, label_B: Optional[Union[int, torch.LongTensor]], 
+                                              cfg=1.5, top_k=0, top_p=0.0,
+    ) -> torch.Tensor:
+        lvl_pos = self.lvl_embed(self.lvl_1L) + self.pos_1LC # 1, L, C
+
+        current_level = len(quant_pyramid) 
+        next_level = current_level + 1
+        next_patch_num = self.patch_nums[next_level]
+        level_ratio = current_level / self.num_stages_minus_1
+
+        is_class_conditioned = label_B is not None
+
+        original_batch_size = quant_pyramid[0].shape[0]
+        batch_size = original_batch_size * 2 if is_class_conditioned else original_batch_size
+
+
+        # cur_L: current length of token sequence
+        cur_L = sum([
+            patch_size * patch_size
+            for patch_size
+            in self.patch_nums[:current_level]
+        ]) 
+
+        if is_class_conditioned:
+            f_hat = f_hat.repeat_interleave(2, dim=0) # double the batch sizes due to CFG
+
+        next_token_map = F.interpolate(f_hat, size=(next_patch_num, next_patch_num), mode='area')
+        next_token_map = (
+            next_token_map
+            .view(batch_size, self.Cvae, -1)
+            .transpose(1, 2)
+        ) # B, L, Cvae
+
+        next_token_map = self.word_embed(next_token_map) 
+        next_token_map += lvl_pos[:, cur_L:cur_L + next_patch_num ** 2] # level encoding
+
+        x = next_token_map
+        for b in self.blocks: b.attn.kv_caching(True)
+
+
+        if is_class_conditioned:
+            label_B[label_B < 0] = self.num_classes
+
+        else:
+            label_B = torch.full(batch_size, fill_value=self.num_classes, device=self.lvl_1L.device)
+        
+        # class embedding
+        if is_class_conditioned:
+            label_B = torch.cat((label_B, torch.full_like(label_B, fill_value=self.num_classes)), dim=0)
+
+        cond_BD = self.class_emb(label_B)
+        cond_BD_or_gss = self.shared_ada_lin(cond_BD)
+
+        # refine the token map via self attention and feed forward network
+        for b in self.blocks:
+            x = b(x=x, cond_BD=cond_BD_or_gss, attn_bias=None)
+        
+        logits_BlV = self.get_logits(x, cond_BD)
+
+        
+        if is_class_conditioned:
+            guidance_ratio = cfg * level_ratio
+
+            logits_BlV = (
+                (1+guidance_ratio) * logits_BlV[:original_batch_size] +
+                (- guidance_ratio) * logits_BlV[original_batch_size:]  
+            ) # B, l, V
+        
+        # Sample from the rk logits
+        idx_Bl = sample_with_top_k_top_p_(logits_BlV, top_k=top_k, top_p=top_p, num_samples=1)[:, :, 0]
+
+        h_BChw = (
+            self.vae_quant_proxy[0].embedding(idx_Bl)
+            .transpose_(1, 2)
+            .reshape(original_batch_size, self.Cvae, next_patch_num, next_patch_num)
+        )
+
+        if next_level != self.num_stages_minus_1:
+            h_BChw = F.interpolate(h_BChw, size=(self.patch_nums[-1], self.patch_nums[-1]), mode='bicubic') ## upscale the next token map to the current resolution 
+
+        predicted_residual = self.vae_quant_proxy[0].quant_resi[level_ratio]((h_BChw))
+
+        return predicted_residual
+
+        
+
     
     def forward(self, label_B: torch.LongTensor, x_BLCv_wo_first_l: torch.Tensor) -> torch.Tensor:  # returns logits_BLV
         """
@@ -195,15 +318,18 @@ class VAR(nn.Module):
         :param x_BLCv_wo_first_l: teacher forcing input (B, self.L-self.first_l, self.Cvae)
         :return: logits BLV, V is vocab_size
         """
-        bg, ed = self.begin_ends[self.prog_si] if self.prog_si >= 0 else (0, self.L)
-        B = x_BLCv_wo_first_l.shape[0]
+        bg, ed = self.begin_ends[self.prog_si] if self.prog_si >= 0 else (0, self.L) # unused for now, no proressive training
+
+        B = x_BLCv_wo_first_l.shape[0] # B: batch size
+        
         with torch.cuda.amp.autocast(enabled=False):
             label_B = torch.where(torch.rand(B, device=label_B.device) < self.cond_drop_rate, self.num_classes, label_B)
             sos = cond_BD = self.class_emb(label_B)
-            sos = sos.unsqueeze(1).expand(B, self.first_l, -1) + self.pos_start.expand(B, self.first_l, -1)
+            sos = sos.unsqueeze(1).expand(B, self.first_l, -1) + self.pos_start.expand(B, self.first_l, -1) # B, l, Cvae
             
             if self.prog_si == 0: x_BLC = sos
             else: x_BLC = torch.cat((sos, self.word_embed(x_BLCv_wo_first_l.float())), dim=1)
+            
             x_BLC += self.lvl_embed(self.lvl_1L[:, :ed].expand(B, -1)) + self.pos_1LC[:, :ed] # lvl: BLC;  pos: 1LC
         
         attn_bias = self.attn_bias_for_masking[:, :, :ed, :ed]
@@ -217,7 +343,6 @@ class VAR(nn.Module):
         cond_BD_or_gss = cond_BD_or_gss.to(dtype=main_type)
         attn_bias = attn_bias.to(dtype=main_type)
         
-        AdaLNSelfAttn.forward
         for i, b in enumerate(self.blocks):
             x_BLC = b(x=x_BLC, cond_BD=cond_BD_or_gss, attn_bias=attn_bias)
         x_BLC = self.get_logits(x_BLC.float(), cond_BD)

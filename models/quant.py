@@ -132,6 +132,69 @@ class VectorQuantizer2(nn.Module):
         
         return ls_f_hat_BChw
     
+    def f_to_quant_pyramid_and_f_hat(self, f_BChw: torch.Tensor, v_patch_nums: Sequence[Union[int, Tuple[int, int]]], final_patch_id: int) -> Tuple[List[torch.LongTensor], torch.Tensor]:
+        """
+        Transforms the feature map to index pyramid (idx_Bl) and residual of f without quantisation. no gradient is used in this function.
+
+        @param f_BChw: the feature map to be quantised
+        @param v_patch_nums: list of patch sizes from small to large
+        @param final_patch_id: the index of last patch size in v_patch_nums to consider (the rest will be the residual)
+        @return: tuple of index pyramid (list of index tensors) and f_hat
+        """
+        total_patches = len(v_patch_nums)
+        B, C, H, W = f_BChw.shape
+        f_no_grad = f_BChw.detach()
+        f_rest = f_no_grad.clone()
+        f_hat = torch.zeros_like(f_rest)
+
+        # assert final_patch_id < total_patches - 1, f'{final_patch_id=} >= {total_patches=}'
+
+        quant_pyramid: List[torch.LongTensor] = []
+
+        with torch.no_grad(): # We don't need gradients here
+            
+            # Build the pyramid's patch sizes from small to large
+            patch_hws = [
+                (pn, pn) if isinstance(pn, int) else (pn[0], pn[1]) 
+                for pn 
+                in v_patch_nums[:final_patch_id] # only consider the first final_patch_id patches
+            ]
+
+            for level_index, (ph, pw) in enumerate(patch_hws):
+
+                # Resize the feature map to the current patch size
+                z_NC = (
+                    F.interpolate(f_rest, size=(ph, pw), mode='area')
+                    .permute(0, 2, 3, 1)
+                    .reshape(-1, C) 
+                )
+                
+                if self.using_znorm:
+                    z_NC = F.normalize(z_NC, dim=-1)
+                    idx_N = torch.argmax(z_NC @ F.normalize(self.embedding.weight.data.T, dim=0), dim=1)
+                else:
+                    d_no_grad = torch.sum(z_NC.square(), dim=1, keepdim=True) + torch.sum(self.embedding.weight.data.square(), dim=1, keepdim=False)
+                    d_no_grad.addmm_(z_NC, self.embedding.weight.data.T, alpha=-2, beta=1)  # (B*h*w, vocab_size)
+                    idx_N = torch.argmin(d_no_grad, dim=1)
+                
+                idx_Bhw = idx_N.view(B, ph, pw)
+                h_BChw = self.embedding(idx_Bhw).permute(0, 3, 1, 2)
+
+                if (ph, pw) != (H, W):
+                    h_BChw = F.interpolate(h_BChw, size=(H, W), mode='bicubic')
+                    
+                h_BChw = h_BChw.contiguous()
+                h_BChw = self.quant_resi[level_index/(total_patches-1)](h_BChw)
+
+                f_hat.add_(h_BChw)
+                f_rest.sub_(h_BChw)
+
+                quant_pyramid.append(idx_N.reshape(B, ph*pw)) # pyramid is a list of index tensors (list of Bl
+
+            
+
+        return quant_pyramid, f_hat
+    
     def f_to_idxBl_or_fhat(self, f_BChw: torch.Tensor, to_fhat: bool, v_patch_nums: Optional[Sequence[Union[int, Tuple[int, int]]]] = None) -> List[Union[torch.Tensor, torch.LongTensor]]:  # z_BChw is the feature from inp_img_no_grad
         B, C, H, W = f_BChw.shape
         f_no_grad = f_BChw.detach()
@@ -146,8 +209,10 @@ class VectorQuantizer2(nn.Module):
         SN = len(patch_hws)
         for si, (ph, pw) in enumerate(patch_hws): # from small to large
             if 0 <= self.prog_si < si: break    # progressive training: not supported yet, prog_si always -1
+            
             # find the nearest embedding
             z_NC = F.interpolate(f_rest, size=(ph, pw), mode='area').permute(0, 2, 3, 1).reshape(-1, C) if (si != SN-1) else f_rest.permute(0, 2, 3, 1).reshape(-1, C)
+            
             if self.using_znorm:
                 z_NC = F.normalize(z_NC, dim=-1)
                 idx_N = torch.argmax(z_NC @ F.normalize(self.embedding.weight.data.T, dim=0), dim=1)

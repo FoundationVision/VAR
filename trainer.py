@@ -88,7 +88,7 @@ class VARTrainer(object):
         inp_B3HW: FTen, label_B: Union[ITen, FTen], prog_si: int, prog_wp_it: float,
     ) -> Tuple[Optional[Union[Ten, float]], Optional[float]]:
         # if progressive training
-        self.var_wo_ddp.prog_si = self.vae_local.quantize.prog_si = prog_si
+        self.var_wo_ddp.prog_si = self.vae_local.quantize.prog_si = prog_si # for progressive training, -1 if no progressive training
         if self.last_prog_si != prog_si:
             if self.last_prog_si != -1: self.first_prog = False
             self.last_prog_si = prog_si
@@ -107,7 +107,8 @@ class VARTrainer(object):
         x_BLCv_wo_first_l: Ten = self.quantize_local.idxBl_to_var_input(gt_idx_Bl)
         
         with self.var_opt.amp_ctx:
-            self.var_wo_ddp.forward
+            self.var_wo_ddp.forward # does this line do anything? # only for getting references in the code
+            
             logits_BLV = self.var(label_B, x_BLCv_wo_first_l)
             loss = self.train_loss(logits_BLV.view(-1, V), gt_BL.view(-1)).view(B, -1)
             if prog_si >= 0:    # in progressive training
