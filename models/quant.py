@@ -138,7 +138,7 @@ class VectorQuantizer2(nn.Module):
 
         @param f_BChw: the feature map to be quantised
         @param v_patch_nums: list of patch sizes from small to large
-        @param final_patch_id: the index of last patch size in v_patch_nums to consider (the rest will be the residual)
+        @param final_patch_id: the index of last patch size in v_patch_nums to consider (the rest will be the residual) indexed from 0
         @return: tuple of index pyramid (list of index tensors) and f_hat
         """
         total_patches = len(v_patch_nums)
@@ -157,7 +157,7 @@ class VectorQuantizer2(nn.Module):
             patch_hws = [
                 (pn, pn) if isinstance(pn, int) else (pn[0], pn[1]) 
                 for pn 
-                in v_patch_nums[:final_patch_id] # only consider the first final_patch_id patches
+                in v_patch_nums[:final_patch_id + 1] # only consider the first final_patch_id patches
             ]
 
             for level_index, (ph, pw) in enumerate(patch_hws):

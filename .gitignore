@@ -18,3 +18,5 @@ local_output*
 *.log
 *.txt
 *.ipynb
+
+venv
