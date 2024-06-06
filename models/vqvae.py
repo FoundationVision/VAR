@@ -66,7 +66,7 @@ class VQVAE(nn.Module):
         f = self.quant_conv(self.encoder(inp_img_no_grad))
         return self.quantize.f_to_idxBl_or_fhat(f, to_fhat=False, v_patch_nums=v_patch_nums)
     
-    def idxBl_to_img(self, ms_idx_Bl: List[torch.Tensor], same_shape: bool, last_one=False) -> Union[List[torch.Tensor], torch.Tensor]:
+    def L(self, ms_idx_Bl: List[torch.Tensor], same_shape: bool, last_one=False) -> Union[List[torch.Tensor], torch.Tensor]:
         B = ms_idx_Bl[0].shape[0]
         ms_h_BChw = []
         for idx_Bl in ms_idx_Bl:

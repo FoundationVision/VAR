@@ -97,10 +97,13 @@ class VectorQuantizer2(nn.Module):
             mean_vq_loss *= 1. / SN
             f_hat = (f_hat.data - f_no_grad).add_(f_BChw)
         
-        margin = tdist.get_world_size() * (f_BChw.numel() / f_BChw.shape[1]) / self.vocab_size * 0.08
+        
         # margin = pn*pn / 100
-        if ret_usages: usages = [(self.ema_vocab_hit_SV[si] >= margin).float().mean().item() * 100 for si, pn in enumerate(self.v_patch_nums)]
-        else: usages = None
+        if ret_usages: 
+            margin = tdist.get_world_size() * (f_BChw.numel() / f_BChw.shape[1]) / self.vocab_size * 0.08
+            usages = [(self.ema_vocab_hit_SV[si] >= margin).float().mean().item() * 100 for si, pn in enumerate(self.v_patch_nums)]
+        else: 
+            usages = None
         return f_hat, usages, mean_vq_loss
     # ===================== `forward` is only used in VAE training =====================
     

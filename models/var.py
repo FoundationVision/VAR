@@ -170,12 +170,12 @@ class VAR(nn.Module):
 
         # so next token map is the first token map, which is the class embedding + positional encoding + level encoding
 
-        print(f'next_token_map: {next_token_map.shape=}\n {next_token_map.dtype=}\n {next_token_map.device=}\n')
+        # print(f'next_token_map: {next_token_map.shape=}\n {next_token_map.dtype=}\n {next_token_map.device=}\n')
         
         cur_L = 0
         f_hat = sos.new_zeros(B, self.Cvae, self.patch_nums[-1], self.patch_nums[-1])
 
-        print(f'[autoregressive_infer_cfg] {f_hat.shape=}\n, {next_token_map.shape=}\n')
+        # print(f'[autoregressive_infer_cfg] {f_hat.shape=}\n, {next_token_map.shape=}\n')
         
         for b in self.blocks: b.attn.kv_caching(True)
 
@@ -236,7 +236,7 @@ class VAR(nn.Module):
         next_patch_num = self.patch_nums[next_level]
         level_ratio = current_level / self.num_stages_minus_1
 
-        print(f"{current_level=}, {next_level=}")
+        # print(f"{current_level=}, {next_level=}")
     
         # class embedding
         label_B[label_B < 0] = self.num_classes # replace -1 with num_classes
@@ -274,7 +274,7 @@ class VAR(nn.Module):
             next_token_map = self.word_embed(next_token_map) 
             next_token_map += lvl_pos[:, cur_L:cur_L + next_patch_num ** 2] # level encoding
             
-        print(f'next_token_map lvl {current_level=} {next_level=}: {next_token_map.shape=}\n')
+        # print(f'next_token_map lvl {current_level=} {next_level=}: {next_token_map.shape=}\n')
 
         x = next_token_map
         for b in self.blocks: b.attn.kv_caching(True)
