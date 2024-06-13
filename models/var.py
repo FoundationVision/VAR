@@ -299,12 +299,19 @@ class VAR(nn.Module):
         #     in self.patch_nums[:map_size_index + 1]
         # ])
 
-        input_length = self.patch_nums[map_size_index] ** 2
-        attn_bias = self.attn_bias_for_masking[:, :, :input_length, :input_length]
+        # input_length = self.patch_nums[map_size_index] ** 2
+        # attn_bias = self.attn_bias_for_masking[:, :, :current_length, :current_length]
+
+        kv_pairs = []
 
         for b in self.blocks:
-            token_map = b(x=token_map, cond_BD=class_conditioning, attn_bias=attn_bias)
+            token_map = b(x=token_map, cond_BD=class_conditioning, attn_bias=None)#, attn_bias=attn_bias)
+            kv_pairs.append({
+                'key': b.attn.cached_k,
+                'value': b.attn.cached_v
+            })
 
+        self.last_kv_pairs = kv_pairs
         # for b in self.blocks: b.attn.kv_caching(False)
 
         return self.get_logits(token_map, class_conditioning)
