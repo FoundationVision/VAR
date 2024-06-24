@@ -251,6 +251,24 @@ class VectorQuantizer2(nn.Module):
             next_scales.append(F.interpolate(f_hat, size=(pn_next, pn_next), mode='area').view(B, C, -1).transpose(1, 2))
         return torch.cat(next_scales, dim=1) if len(next_scales) else None    # cat BlCs to BLC, this should be float32
     
+    def limited_quant_pyramid_to_var_input(self, limited_quant_pyramid: List[torch.Tensor]) -> torch.Tensor:
+        if not limited_quant_pyramid: return None
+        next_scales = []
+        C = self.Cvae
+        H = W = self.v_patch_nums[-1]
+        SN = len(self.v_patch_nums)
+        batch_size = limited_quant_pyramid[0].shape[0]
+        
+        f_hat = limited_quant_pyramid[0].new_zeros(batch_size, C, H, W, dtype=torch.float32)
+        pn_next: int = self.v_patch_nums[0]
+        for si in range(len(limited_quant_pyramid)):
+            h_BChw = F.interpolate(self.embedding(limited_quant_pyramid[si]).transpose_(1, 2).view(batch_size, C, pn_next, pn_next), size=(H, W), mode='bicubic')
+            f_hat.add_(self.quant_resi[si/(SN-1)](h_BChw))
+            pn_next = self.v_patch_nums[si+1]
+            next_scales.append(F.interpolate(f_hat, size=(pn_next, pn_next), mode='area').view(batch_size, C, -1).transpose(1, 2))
+        return torch.cat(next_scales, dim=1) if len(next_scales) else None    # cat BlCs to BLC, this should be float32
+    
+
     # ===================== get_next_autoregressive_input: only used in VAR inference, for getting next step's input =====================
     def get_next_autoregressive_input(self, si: int, SN: int, f_hat: torch.Tensor, h_BChw: torch.Tensor) -> Tuple[Optional[torch.Tensor], torch.Tensor]: # only used in VAR inference
         HW = self.v_patch_nums[-1]

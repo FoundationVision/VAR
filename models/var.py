@@ -290,31 +290,139 @@ class VAR(nn.Module):
         token_map_cfg = token_map.repeat(2, 1, 1) # double the batch sizes due to CFG
 
         return token_map_cfg
+    
+    def get_causal_mask(self, map_size_index: int):
+        current_length = sum([
+            patch_size * patch_size
+            for patch_size
+            in self.patch_nums[:map_size_index + 1]
+        ])
+
+        attn_bias = self.attn_bias_for_masking[:, :, :current_length, :current_length]
+        return attn_bias
 
     
-    def token_map_to_logits(self, token_map, class_conditioning, map_size_index: int):
-        # current_length = sum([
-        #     patch_size * patch_size
-        #     for patch_size
-        #     in self.patch_nums[:map_size_index + 1]
-        # ])
+    def token_map_to_relevant_logits(self, token_map, class_conditioning, map_size_index: int, masked: bool = True):
+        '''
+        Predicts the logits for each token map. If masked, then predicts logits only for the last token map.
 
-        # input_length = self.patch_nums[map_size_index] ** 2
-        # attn_bias = self.attn_bias_for_masking[:, :, :current_length, :current_length]
-
-        kv_pairs = []
+        Args:
+            token_map: the token map to predict logits for
+            class_conditioning: the class conditioning for the token map
+            map_size_index: the index of the token map in the token pyramid
+            masked: whether to mask the logits for the token map
+        '''
+        attn_bias = self.get_causal_mask(map_size_index) if masked else None
 
         for b in self.blocks:
-            token_map = b(x=token_map, cond_BD=class_conditioning, attn_bias=None)#, attn_bias=attn_bias)
-            kv_pairs.append({
-                'key': b.attn.cached_k,
-                'value': b.attn.cached_v
-            })
+            token_map = b(x=token_map, cond_BD=class_conditioning, attn_bias=attn_bias)
 
-        self.last_kv_pairs = kv_pairs
-        # for b in self.blocks: b.attn.kv_caching(False)
+        if masked:
+            output_length = self.patch_nums[map_size_index] ** 2
+            token_map = token_map[:, -output_length:]
 
         return self.get_logits(token_map, class_conditioning)
+    
+    def get_full_token_map(self, map_size_index, label_B, f_hat, last_grad_only=True):
+        '''
+        Returns the full token map for the given level of the token pyramid.
+
+        Args:
+            map_size_index: the index of the token map in the token pyramid
+            label_B: the class labels
+            f_hat: the f_hat tensor
+            last_grad_only: whether to require grad for the last level or for all levels
+        '''
+        full_token_map = self.get_initial_token_map(label_B)
+        
+        if map_size_index == 0:
+            return full_token_map
+        
+        with torch.no_grad() if last_grad_only else torch.enable_grad():
+            for i in range(1, map_size_index): # for each level up to the second to last level
+                step_token_map = self.prepare_token_map(f_hat, map_size_index=i)
+                full_token_map = torch.cat([full_token_map, step_token_map], dim=1)
+
+        # for the last level we need grad anyway
+        last_step_token_map = self.prepare_token_map(f_hat, map_size_index=map_size_index) 
+        full_token_map = torch.cat([full_token_map, last_step_token_map], dim=1)
+
+        return full_token_map
+    
+    def quant_pyramid_to_var_inputs(self, quant_pyramid: List[torch.Tensor], label_B: torch.LongTensor, batch_size:int):
+        '''
+        Converts the quantized pyramid to a token map and attention bias.
+        '''
+        previous_map_size_index = len(quant_pyramid) - 1 # last patch index in the pyramid
+        map_size_index = previous_map_size_index + 1 # We want to predict the next token map
+
+        current_length = sum([
+            patch_size * patch_size
+            for patch_size
+            in self.patch_nums[:map_size_index + 1]
+        ])
+
+        cfg_batch_size = batch_size * 2 # double the batch sizes due to CFG
+
+        class_embedding = self.get_class_embedding(label_B)
+
+        initial_token_map = (
+            class_embedding
+            .unsqueeze(1)
+            .expand(cfg_batch_size, self.first_l, -1)
+        )
+        
+        initial_token_map += self.pos_start.expand(cfg_batch_size, self.first_l, -1) # B, l, Cvae
+
+        raw_token_map = self.vae_quant_proxy[0].limited_quant_pyramid_to_var_input(quant_pyramid)
+
+        # Duplicate batch dim for cfg
+        if map_size_index > 0:
+            raw_token_map = raw_token_map.repeat(2, 1, 1)
+            token_map = torch.cat((initial_token_map, self.word_embed(raw_token_map.float())), dim=1)
+        else:
+            token_map = initial_token_map
+
+        token_map += self.lvl_embed(self.lvl_1L[:, :current_length].expand(cfg_batch_size, -1)) 
+        token_map += self.pos_1LC[:, :current_length] # lvl: BLC;  pos: 1LC
+
+        return token_map
+    
+    def predict_single_step_from_quant_pyramid(self, quant_pyramid: List[torch.Tensor], label_B: torch.LongTensor, batch_size:int, cfg=4, top_k=0, top_p=0.0):
+        '''
+        Predicts the next token map from the given quantized pyramid.
+        '''
+        previous_map_size_index = len(quant_pyramid) - 1 # last patch index in the pyramid
+        map_size_index = previous_map_size_index + 1 # We want to predict the next token map
+
+        token_map = self.quant_pyramid_to_var_inputs(quant_pyramid, label_B, batch_size=batch_size)
+        class_conditioning = self.get_class_conditioning(label_B)
+
+        logits = self.token_map_to_relevant_logits(token_map, class_conditioning, map_size_index=map_size_index, masked=True)
+
+        indices = self.logits_to_indices(logits, cfg=cfg, level_ratio=map_size_index / (len(self.patch_nums) - 1), batch_size=batch_size, top_k=top_k, top_p=top_p)
+        
+        level_ratio = map_size_index / (len(self.patch_nums) - 1)
+        patch_num = self.patch_nums[map_size_index]
+        residual = self.indices_to_h(indices, batch_size=batch_size, level_ratio=level_ratio, patch_num=patch_num)
+
+        return residual
+    
+    def predict_single_step_residual(self, f_hat, label_B, map_size_index, cfg=4, top_k=0, top_p=0.0):
+        batch_size = label_B.shape[0]
+        patch_num = self.patch_nums[map_size_index]
+        level_ratio = map_size_index / (len(self.patch_nums) - 1)
+
+        full_token_map = self.get_full_token_map(map_size_index, label_B, f_hat, last_grad_only=True)
+        class_conditioning = self.get_class_conditioning(label_B)
+
+
+        logits = self.token_map_to_relevant_logits(full_token_map, class_conditioning, map_size_index=map_size_index, masked=True)
+
+        indices = self.logits_to_indices(logits, cfg=cfg, batch_size=batch_size, level_ratio=level_ratio, top_k=top_k, top_p=top_p)
+        residual = self.indices_to_h(indices, batch_size=batch_size, level_ratio=level_ratio, patch_num=patch_num)
+
+        return residual # in the paper it's h (BChw)
     
 
     def logits_to_indices(self, logits, cfg, level_ratio, batch_size, top_k=0, top_p=0.0):
@@ -341,108 +449,6 @@ class VAR(nn.Module):
         h = self.vae_quant_proxy[0].quant_resi[level_ratio](zk) # get the residual (extra conv layers)
 
         return h
-    
-    
-
-
-
-
-
-
-        
-
-    
-    def autoregressive_single_step_prediction(self, current_level: int, f_hat: torch.Tensor, label_B: Union[int, torch.LongTensor], 
-                                              cfg=1.5, top_k=0, top_p=0.0,
-    ) -> torch.Tensor:
-        lvl_pos = self.lvl_embed(self.lvl_1L) + self.pos_1LC # 1, L, C
-
-        next_level = current_level + 1 # level to which the prediction is made
-        next_patch_num = self.patch_nums[next_level]
-        level_ratio = current_level / self.num_stages_minus_1
-
-        # print(f"{current_level=}, {next_level=}")
-    
-        # class embedding
-        label_B[label_B < 0] = self.num_classes # replace -1 with num_classes
-        label_B = torch.cat((label_B, torch.full_like(label_B, fill_value=self.num_classes)), dim=0) # Cfg requires double the batch size
-        cond_BD = self.class_emb(label_B)
-
-        original_batch_size = f_hat.shape[0]
-        cfg_batch_size = 2 * original_batch_size
-        f_hat = f_hat.repeat(2,1,1,1) # double the batch sizes due to CFG
-
-        # cur_L: current length of token sequence
-        
-
-
-        if current_level == -1: # first level, we start from the class embedding
-            lvl_pos = self.lvl_embed(self.lvl_1L) + self.pos_1LC
-            next_token_map = (
-                cond_BD.unsqueeze(1).expand(cfg_batch_size, self.first_l, -1) # 2B, l, Cvae; class conditioning
-                + self.pos_start.expand(cfg_batch_size, self.first_l, -1) # 2B, l, Cvae; positional encoding
-                + lvl_pos[:, :self.first_l]  # level encoding
-            )
-            # print(f'next_token_map lvl 0: {next_token_map.shape=}\n')
-
-        else:
-            next_token_map = (
-                F.interpolate(f_hat, size=(next_patch_num, next_patch_num), mode='area')
-                .view(cfg_batch_size, self.Cvae, -1)
-                .transpose(1, 2)
-            ) # B, L, Cvae
-
-            next_token_map = self.word_embed(next_token_map) 
-
-            cur_L = sum([
-                patch_size * patch_size
-                for patch_size
-                in self.patch_nums[:current_level]
-            ]) 
-            print(f'{current_level=} cur_L: {cur_L=}')
-            next_token_map += lvl_pos[:, cur_L:cur_L + next_patch_num ** 2] # level encoding
-            
-        # print(f'next_token_map lvl {current_level=} {next_level=}: {next_token_map.shape=}\n')
-
-        x = next_token_map
-        for b in self.blocks: b.attn.kv_caching(True)
-
-        cond_BD_or_gss = self.shared_ada_lin(cond_BD)
-
-        # refine the token map via self attention and feed forward network
-        for b in self.blocks:
-            x = b(x=x, cond_BD=cond_BD_or_gss, attn_bias=None)
-        
-        logits_BlV = self.get_logits(x, cond_BD)
-
-        
-        guidance_ratio = cfg * level_ratio
-        logits_BlV = (
-            (1+guidance_ratio) * logits_BlV[:original_batch_size] +
-            (- guidance_ratio) * logits_BlV[original_batch_size:]  
-        ) # B, l, V
-    
-        # Sample from the rk logits
-        idx_Bl = sample_with_top_k_top_p_(logits_BlV, top_k=top_k, top_p=top_p, num_samples=1)[:, :, 0]
-        # idx_Bl = logits_BlV.argmax(dim=-1)
-
-        h_BChw = (
-            self.vae_quant_proxy[0].embedding(idx_Bl)
-            .transpose_(1, 2)
-            .reshape(original_batch_size, self.Cvae, next_patch_num, next_patch_num)
-        )
-
-        if next_level != self.num_stages_minus_1:
-            h_BChw = F.interpolate(h_BChw, size=(self.patch_nums[-1], self.patch_nums[-1]), mode='bicubic') ## upscale the next token map to the current resolution 
-
-        predicted_residual = self.vae_quant_proxy[0].quant_resi[level_ratio](h_BChw)
-
-        for b in self.blocks: b.attn.kv_caching(False)
-
-        return predicted_residual
-
-        
-
     
     def forward(self, label_B: torch.LongTensor, x_BLCv_wo_first_l: torch.Tensor) -> torch.Tensor:  # returns logits_BLV
         """
