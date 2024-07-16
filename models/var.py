@@ -388,7 +388,7 @@ class VAR(nn.Module):
 
         return token_map
     
-    def predict_single_step_from_quant_pyramid(self, quant_pyramid: List[torch.Tensor], label_B: torch.LongTensor, batch_size:int, cfg=4, top_k=0, top_p=0.0):
+    def predict_single_step_from_quant_pyramid(self, quant_pyramid: List[torch.Tensor], label_B: torch.LongTensor, batch_size:int, cfg=4, top_k=0, top_p=0.0, rng=None):
         '''
         Predicts the next token map from the given quantized pyramid.
         '''
@@ -400,7 +400,7 @@ class VAR(nn.Module):
 
         logits = self.token_map_to_relevant_logits(token_map, class_conditioning, map_size_index=map_size_index, masked=True)
 
-        indices = self.logits_to_indices(logits, cfg=cfg, level_ratio=map_size_index / (len(self.patch_nums) - 1), batch_size=batch_size, top_k=top_k, top_p=top_p)
+        indices = self.logits_to_indices(logits, cfg=cfg, level_ratio=map_size_index / (len(self.patch_nums) - 1), batch_size=batch_size, top_k=top_k, top_p=top_p, rng=rng)
         
         level_ratio = map_size_index / (len(self.patch_nums) - 1)
         patch_num = self.patch_nums[map_size_index]
@@ -425,7 +425,7 @@ class VAR(nn.Module):
         return residual # in the paper it's h (BChw)
     
 
-    def logits_to_indices(self, logits, cfg, level_ratio, batch_size, top_k=0, top_p=0.0):
+    def logits_to_indices(self, logits, cfg, level_ratio, batch_size, top_k=0, top_p=0.0, rng=None):
 
         guidance_ratio = cfg * level_ratio
 
@@ -434,7 +434,7 @@ class VAR(nn.Module):
             (- guidance_ratio) * logits[batch_size:]
         ) # use CFG to guide the logits
 
-        return sample_with_top_k_top_p_(logits_guided, top_k=top_k, top_p=top_p, num_samples=1)[:, :, 0]
+        return sample_with_top_k_top_p_(logits_guided, top_k=top_k, top_p=top_p, num_samples=1, rng=rng)[:, :, 0]
 
     def indices_to_h(self, indices, level_ratio, patch_num, batch_size):
         zk = (
