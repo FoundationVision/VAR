@@ -27,7 +27,7 @@
 
 ## News
 
-* **2024-12:** We Release our latest Text-to-Image research based on Visual AutoRegressive Modeling, please check [Infinity](https://arxiv.org/abs/2412.04431).
+* **2024-12:** We Release our Text-to-Image research based on VAR, please check [Infinity](https://arxiv.org/abs/2412.04431).
 * **2024-09:** VAR is accepted as **NeurIPS 2024 Oral** Presentation.
 * **2024-04:** [Visual AutoRegressive modeling](https://github.com/FoundationVision/VAR) is released.
 
