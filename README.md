@@ -15,7 +15,7 @@
 
 <div>
   <p align="center" style="font-size: larger;">
-    <strong>NeurIPS 2024 Oral</strong>
+    <strong>NeurIPS 2024 Best Paper</strong>
   </p>
 </div>
 
