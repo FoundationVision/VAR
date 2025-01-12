@@ -156,6 +156,46 @@ Then use the [OpenAI's FID evaluation toolkit](https://github.com/openai/guided-
 Note a relatively small `cfg=1.5` is used for trade-off between image quality and diversity. You can adjust it to `cfg=5.0`, or sample with `autoregressive_infer_cfg(..., more_smooth=True)` for **better visual quality**.
 We'll provide the sampling script later.
 
+
+## Third-party Usage and Research
+
+***In this pargraph, we cross link third-party repositories or research which use VAR and report results. You can let us know by raising an issue***
+
+(`Note please report accuracy numbers and provide trained models in your new repository to facilitate others to get sense of correctness and model behavior`)
+
+[12/30/2024] Varformer: Adapting VAR’s Generative Prior for Image Restoration: https://github.com/siywang541/Varformer
+
+[12/19/2024] FlowAR: Scale-wise Autoregressive Image Generation Meets Flow Matching: https://github.com/OliverRensu/FlowAR
+
+[12/13/2024] 3D representation in 512-Byte: Variational tokenizer is the key for autoregressive 3D generation: https://github.com/sparse-mvs-2/VAT
+
+[12/19/2024] FlowAR: Scale-wise Autoregressive Image Generation Meets Flow Matching: https://github.com/OliverRensu/FlowAR
+
+[12/9/2024] CARP: Visuomotor Policy Learning via Coarse-to-Fine Autoregressive Prediction: https://carp-robot.github.io/
+
+[12/5/2024] Infinity ∞: Scaling Bitwise AutoRegressive Modeling for High-Resolution Image Synthesis: https://github.com/FoundationVision/Infinity
+
+[12/5/2024] Switti: Designing Scale-Wise Transformers for Text-to-Image Synthesis: https://github.com/yandex-research/switti
+
+[12/3/2024] XQ-GAN🚀: An Open-source Image Tokenization Framework for Autoregressive Generation: https://github.com/lxa9867/ImageFolder
+
+[11/28/2024] CoDe: Collaborative Decoding Makes Visual Auto-Regressive Modeling Efficient: https://github.com/czg1225/CoDe
+
+[11/27/2024] SAR3D: Autoregressive 3D Object Generation and Understanding via Multi-scale 3D VQVAE: https://github.com/cyw-3d/SAR3D
+
+[11/15/2024] M-VAR: Decoupled Scale-wise Autoregressive Modeling for High-Quality Image Generation: https://github.com/OliverRensu/MVAR
+
+[10/14/2024] HART: Efficient Visual Generation with Hybrid Autoregressive Transformer: https://github.com/mit-han-lab/hart
+
+[10/3/2024] ImageFolder🚀: Autoregressive Image Generation with Folded Tokens: https://github.com/lxa9867/ImageFolder
+
+[07/25/2024] ControlVAR: Exploring Controllable Visual Autoregressive Modeling: https://github.com/lxa9867/ControlVAR
+
+[07/3/2024] VAR-CLIP: Text-to-Image Generator with Visual Auto-Regressive Modeling: https://github.com/daixiangzi/VAR-CLIP
+
+[06/16/2024] STAR: Scale-wise Text-to-image generation via Auto-Regressive representations: https://arxiv.org/abs/2406.10797
+
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
@@ -170,5 +210,17 @@ If our work assists your research, feel free to give us a star ⭐ or cite us us
       eprint={2404.02905},
       archivePrefix={arXiv},
       primaryClass={cs.CV}
+}
+```
+
+```
+@misc{Infinity,
+    title={Infinity: Scaling Bitwise AutoRegressive Modeling for High-Resolution Image Synthesis}, 
+    author={Jian Han and Jinlai Liu and Yi Jiang and Bin Yan and Yuqi Zhang and Zehuan Yuan and Bingyue Peng and Xiaobing Liu},
+    year={2024},
+    eprint={2412.04431},
+    archivePrefix={arXiv},
+    primaryClass={cs.CV},
+    url={https://arxiv.org/abs/2412.04431}, 
 }
 ```
