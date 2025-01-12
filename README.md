@@ -165,6 +165,8 @@ We'll provide the sampling script later.
 
 [12/30/2024] Varformer: Adapting VAR’s Generative Prior for Image Restoration: https://github.com/siywang541/Varformer
 
+[12/22/2024] Distilled Decoding 1: One-step Sampling of Image Auto-regressive Models with Flow Matching: https://github.com/imagination-research/distilled-decoding
+
 [12/19/2024] FlowAR: Scale-wise Autoregressive Image Generation Meets Flow Matching: https://github.com/OliverRensu/FlowAR
 
 [12/13/2024] 3D representation in 512-Byte: Variational tokenizer is the key for autoregressive 3D generation: https://github.com/sparse-mvs-2/VAT
@@ -177,11 +179,17 @@ We'll provide the sampling script later.
 
 [12/5/2024] Switti: Designing Scale-Wise Transformers for Text-to-Image Synthesis: https://github.com/yandex-research/switti
 
+[12/4/2024] TokenFlow🚀: Unified Image Tokenizer for Multimodal Understanding and Generation: https://github.com/ByteFlow-AI/TokenFlow
+
 [12/3/2024] XQ-GAN🚀: An Open-source Image Tokenization Framework for Autoregressive Generation: https://github.com/lxa9867/ImageFolder
 
 [11/28/2024] CoDe: Collaborative Decoding Makes Visual Auto-Regressive Modeling Efficient: https://github.com/czg1225/CoDe
 
 [11/27/2024] SAR3D: Autoregressive 3D Object Generation and Understanding via Multi-scale 3D VQVAE: https://github.com/cyw-3d/SAR3D
+
+[11/26/2024] LiteVAR: Compressing Visual Autoregressive Modelling with Efficient Attention and Quantization: https://arxiv.org/abs/2411.17178
+
+[11/28/2024] Scalable Autoregressive Monocular Depth Estimation: https://arxiv.org/abs/2411.11361
 
 [11/15/2024] M-VAR: Decoupled Scale-wise Autoregressive Modeling for High-Quality Image Generation: https://github.com/OliverRensu/MVAR
 
