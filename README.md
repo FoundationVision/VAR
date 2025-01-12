@@ -163,7 +163,9 @@ We'll provide the sampling script later.
 
 (`Note please report accuracy numbers and provide trained models in your new repository to facilitate others to get sense of correctness and model behavior`)
 
-[12/30/2024] Varformer: Adapting VAR’s Generative Prior for Image Restoration: https://github.com/siywang541/Varformer
+[12/30/2024] Next Token Prediction Towards Multimodal Intelligence: https://github.com/LMM101/Awesome-Multimodal-Next-Token-Prediction
+
+[12/30/2024] Varformer: Adapting VAR’s Generative Prior for Image Restoration: https://arxiv.org/abs/2412.21063
 
 [12/22/2024] Distilled Decoding 1: One-step Sampling of Image Auto-regressive Models with Flow Matching: https://github.com/imagination-research/distilled-decoding
 
