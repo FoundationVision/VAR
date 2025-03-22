@@ -188,6 +188,7 @@ We'll provide the sampling script later.
 | [11/26/2024] | LiteVAR: Compressing Visual Autoregressive Modelling with Efficient Attention and Quantization                    | https://arxiv.org/abs/2411.17178                                   |
 | [11/15/2024] | M-VAR: Decoupled Scale-wise Autoregressive Modeling for High-Quality Image Generation                             | https://github.com/OliverRensu/MVAR                                |
 | [10/14/2024] | [ICLR 2025]HART: Efficient Visual Generation with Hybrid Autoregressive Transformer                               | https://github.com/mit-han-lab/hart                                |
+| [10/12/2024] | [ICLR 2025 Oral]Toward Guidance-Free AR Visual Generation via Condition Contrastive Alignment                     | https://github.com/thu-ml/CCA                                      |
 | [10/3/2024]  | [ICLR 2025]ImageFolder🚀: Autoregressive Image Generation with Folded Tokens                                      | https://github.com/lxa9867/ImageFolder                             |
 | [07/25/2024] | ControlVAR: Exploring Controllable Visual Autoregressive Modeling                                                 | https://github.com/lxa9867/ControlVAR                              |
 | [07/3/2024]  | VAR-CLIP: Text-to-Image Generator with Visual Auto-Regressive Modeling                                            | https://github.com/daixiangzi/VAR-CLIP                             |
