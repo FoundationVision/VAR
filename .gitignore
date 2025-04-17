@@ -17,4 +17,4 @@ local_output*
 *.ckpt
 *.log
 *.txt
-*.ipynb
+data/
