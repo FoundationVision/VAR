@@ -6,3 +6,4 @@ numpy
 pytz
 transformers
 typed-argument-parser
+kagglehub
