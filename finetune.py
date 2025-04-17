@@ -10,9 +10,6 @@ import glob
 import random
 
 # === VQVAE, VAR assumed to be already built and loaded (as in your code) ===
-# vae, var = build_vae_var(...)
-# vae.load_state_dict(...)
-# var.load_state_dict(...)
 ################## 1. Download checkpoints and build models
 import os
 if os.path.exists('/content/VAR'): os.chdir('/content/VAR')
@@ -33,7 +30,7 @@ assert MODEL_DEPTH in {16, 20, 24, 30, 36}
 
 # download checkpoint
 # hf_home = 'https://huggingface.co/FoundationVision/var/resolve/main'
-vae_ckpt, var_ckpt = './model_path/var/vae_ch160v4096z32.pth', f'./model_path/var/var_d{MODEL_DEPTH}.pth'
+vae_ckpt, var_ckpt = './var_d36.pth', f'./var_d36.pth'
 # if not osp.exists(vae_ckpt): os.system(f'wget {hf_home}/{vae_ckpt}')
 # if not osp.exists(var_ckpt): os.system(f'wget {hf_home}/{var_ckpt}')
 
@@ -155,6 +152,6 @@ def train_var_for_sr(var, vae, dataloader, device='cuda', epochs=10, lr=1e-4):
 
 
 # === Usage Example ===
-dataset = Flickr2KSRDataset(root_dir='./data/Flickr2K', scale=2, patch_size=512, stride=256)
+dataset = Flickr2KSRDataset(root_dir='./data/kagglehub/datasets/daehoyang/flickr2k/versions', scale=2, patch_size=512, stride=256)
 dataloader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=4)
 train_var_for_sr(var, vae, dataloader, device='cuda', epochs=5)
