@@ -18,3 +18,7 @@ local_output*
 *.log
 *.txt
 data/
+results_d16/
+results_d24/
+results_d36/
+multiscale_result/
