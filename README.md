@@ -163,36 +163,43 @@ We'll provide the sampling script later.
 
 (`Note please report accuracy numbers and provide trained models in your new repository to facilitate others to get sense of correctness and model behavior`)
 
-| **Time**     | **Research**                                                                                                      | **Link**                                                           |
-|--------------|-------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
-| [3/3/2025]   | Direct Discriminative Optimization: Your Likelihood-Based Visual Generative Model is Secretly a GAN Discriminator | https://research.nvidia.com/labs/dir/ddo/                          |
-| [2/28/2025]  | Autoregressive Medical Image Segmentation via Next-Scale Mask Prediction                                          | https://arxiv.org/abs/2502.20784                                   |
-| [2/27/2025]  | FlexVAR: Flexible Visual Autoregressive Modeling without Residual Prediction                                      | https://github.com/jiaosiyu1999/FlexVAR                            |
-| [2/17/2025]  | MARS: Mesh AutoRegressive Model for 3D Shape Detailization                                                        | https://arxiv.org/abs/2502.11390                                   |
-| [1/31/2025]  | Visual Autoregressive Modeling for Image Super-Resolution                                                         | https://github.com/quyp2000/VARSR                                  |
-| [1/21/2025]  | VARGPT: Unified Understanding and Generation in a Visual Autoregressive Multimodal Large Language Model           | https://github.com/VARGPT-family/VARGPT                            |
-| [1/26/2025]  | Visual Generation Without Guidance                                                                                | https://github.com/thu-ml/GFT                                      |
-| [12/30/2024] | Next Token Prediction Towards Multimodal Intelligence                                                             | https://github.com/LMM101/Awesome-Multimodal-Next-Token-Prediction |
-| [12/30/2024] | Varformer: Adapting VAR’s Generative Prior for Image Restoration                                                  | https://arxiv.org/abs/2412.21063                                   |
-| [12/22/2024] | [ICLR 2025]Distilled Decoding 1: One-step Sampling of Image Auto-regressive Models with Flow Matching             | https://github.com/imagination-research/distilled-decoding         |
-| [12/19/2024] | FlowAR: Scale-wise Autoregressive Image Generation Meets Flow Matching                                            | https://github.com/OliverRensu/FlowAR                              |
-| [12/13/2024] | 3D representation in 512-Byte: Variational tokenizer is the key for autoregressive 3D generation                  | https://github.com/sparse-mvs-2/VAT                                |
-| [12/9/2024]  | CARP: Visuomotor Policy Learning via Coarse-to-Fine Autoregressive Prediction                                     | https://carp-robot.github.io/                                      |
-| [12/5/2024]  | [CVPR 2025]Infinity ∞: Scaling Bitwise AutoRegressive Modeling for High-Resolution Image Synthesis                | https://github.com/FoundationVision/Infinity                       |
-| [12/5/2024]  | [CVPR 2025]Switti: Designing Scale-Wise Transformers for Text-to-Image Synthesis                                  | https://github.com/yandex-research/switti                          |
-| [12/4/2024]  | [CVPR 2025]TokenFlow🚀: Unified Image Tokenizer for Multimodal Understanding and Generation                       | https://github.com/ByteFlow-AI/TokenFlow                           |
-| [12/3/2024]  | XQ-GAN🚀: An Open-source Image Tokenization Framework for Autoregressive Generation                               | https://github.com/lxa9867/ImageFolder                             |
-| [11/28/2024] | [CVPR 2025]CoDe: Collaborative Decoding Makes Visual Auto-Regressive Modeling Efficient                           | https://github.com/czg1225/CoDe                                    |
-| [11/28/2024] | [CVPR 2025]Scalable Autoregressive Monocular Depth Estimation                                                     | https://arxiv.org/abs/2411.11361                                   |
-| [11/27/2024] | [CVPR 2025]SAR3D: Autoregressive 3D Object Generation and Understanding via Multi-scale 3D VQVAE                  | https://github.com/cyw-3d/SAR3D                                    |
-| [11/26/2024] | LiteVAR: Compressing Visual Autoregressive Modelling with Efficient Attention and Quantization                    | https://arxiv.org/abs/2411.17178                                   |
-| [11/15/2024] | M-VAR: Decoupled Scale-wise Autoregressive Modeling for High-Quality Image Generation                             | https://github.com/OliverRensu/MVAR                                |
-| [10/14/2024] | [ICLR 2025]HART: Efficient Visual Generation with Hybrid Autoregressive Transformer                               | https://github.com/mit-han-lab/hart                                |
-| [10/12/2024] | [ICLR 2025 Oral]Toward Guidance-Free AR Visual Generation via Condition Contrastive Alignment                     | https://github.com/thu-ml/CCA                                      |
-| [10/3/2024]  | [ICLR 2025]ImageFolder🚀: Autoregressive Image Generation with Folded Tokens                                      | https://github.com/lxa9867/ImageFolder                             |
-| [07/25/2024] | ControlVAR: Exploring Controllable Visual Autoregressive Modeling                                                 | https://github.com/lxa9867/ControlVAR                              |
-| [07/3/2024]  | VAR-CLIP: Text-to-Image Generator with Visual Auto-Regressive Modeling                                            | https://github.com/daixiangzi/VAR-CLIP                             |
-| [06/16/2024] | STAR: Scale-wise Text-to-image generation via Auto-Regressive representations                                     | https://arxiv.org/abs/2406.10797                                   |
+| **Time**     | **Research**                                                                                                                      | **Link**                                                           |
+|--------------|-----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
+| [5/12/2025]  | Continuous Visual Autoregressive Generation via Score Maximization                                                                | https://github.com/shaochenze/EAR                                  |
+| [5/8/2025]   | Generative Autoregressive Transformers for Model-Agnostic Federated MRI Reconstruction                                            | https://github.com/icon-lab/FedGAT                                 |
+| [4/7/2025]   | FastVAR: Linear Visual Autoregressive Modeling via Cached Token Pruning                                                           | https://github.com/csguoh/FastVAR                                  |
+| [4/3/2025]   | VARGPT-v1.1: Improve Visual Autoregressive Large Unified Model via Iterative Instruction Tuning and Reinforcement Learning        | https://github.com/VARGPT-family/VARGPT-v1.1                       |
+| [3/31/2025]  | Training-Free Text-Guided Image Editing with Visual Autoregressive Model                                                          | https://github.com/wyf0912/AREdit                                  |
+| [3/17/2025]  | Next-Scale Autoregressive Models are Zero-Shot Single-Image Object View Synthesizers                                              | https://github.com/Shiran-Yuan/ArchonView                          |
+| [3/14/2025]  | Safe-VAR: Safe Visual Autoregressive Model for Text-to-Image Generative Watermarking                                              | https://arxiv.org/abs/2503.11324                                   |
+| [3/3/2025]   | Direct Discriminative Optimization: Your Likelihood-Based Visual Generative Model is Secretly a GAN Discriminator                 | https://research.nvidia.com/labs/dir/ddo/                          |
+| [2/28/2025]  | Autoregressive Medical Image Segmentation via Next-Scale Mask Prediction                                                          | https://arxiv.org/abs/2502.20784                                   |
+| [2/27/2025]  | FlexVAR: Flexible Visual Autoregressive Modeling without Residual Prediction                                                      | https://github.com/jiaosiyu1999/FlexVAR                            |
+| [2/17/2025]  | MARS: Mesh AutoRegressive Model for 3D Shape Detailization                                                                        | https://arxiv.org/abs/2502.11390                                   |
+| [1/31/2025]  | Visual Autoregressive Modeling for Image Super-Resolution                                                                         | https://github.com/quyp2000/VARSR                                  |
+| [1/21/2025]  | VARGPT: Unified Understanding and Generation in a Visual Autoregressive Multimodal Large Language Model                           | https://github.com/VARGPT-family/VARGPT                            |
+| [1/26/2025]  | Visual Generation Without Guidance                                                                                                | https://github.com/thu-ml/GFT                                      |
+| [12/30/2024] | Next Token Prediction Towards Multimodal Intelligence                                                                             | https://github.com/LMM101/Awesome-Multimodal-Next-Token-Prediction |
+| [12/30/2024] | Varformer: Adapting VAR’s Generative Prior for Image Restoration                                                                  | https://arxiv.org/abs/2412.21063                                   |
+| [12/22/2024] | [ICLR 2025]Distilled Decoding 1: One-step Sampling of Image Auto-regressive Models with Flow Matching                             | https://github.com/imagination-research/distilled-decoding         |
+| [12/19/2024] | FlowAR: Scale-wise Autoregressive Image Generation Meets Flow Matching                                                            | https://github.com/OliverRensu/FlowAR                              |
+| [12/13/2024] | 3D representation in 512-Byte: Variational tokenizer is the key for autoregressive 3D generation                                  | https://github.com/sparse-mvs-2/VAT                                |
+| [12/9/2024]  | CARP: Visuomotor Policy Learning via Coarse-to-Fine Autoregressive Prediction                                                     | https://carp-robot.github.io/                                      |
+| [12/5/2024]  | [CVPR 2025]Infinity ∞: Scaling Bitwise AutoRegressive Modeling for High-Resolution Image Synthesis                                | https://github.com/FoundationVision/Infinity                       |
+| [12/5/2024]  | [CVPR 2025]Switti: Designing Scale-Wise Transformers for Text-to-Image Synthesis                                                  | https://github.com/yandex-research/switti                          |
+| [12/4/2024]  | [CVPR 2025]TokenFlow🚀: Unified Image Tokenizer for Multimodal Understanding and Generation                                       | https://github.com/ByteFlow-AI/TokenFlow                           |
+| [12/3/2024]  | XQ-GAN🚀: An Open-source Image Tokenization Framework for Autoregressive Generation                                               | https://github.com/lxa9867/ImageFolder                             |
+| [11/28/2024] | [CVPR 2025]CoDe: Collaborative Decoding Makes Visual Auto-Regressive Modeling Efficient                                           | https://github.com/czg1225/CoDe                                    |
+| [11/28/2024] | [CVPR 2025]Scalable Autoregressive Monocular Depth Estimation                                                                     | https://arxiv.org/abs/2411.11361                                   |
+| [11/27/2024] | [CVPR 2025]SAR3D: Autoregressive 3D Object Generation and Understanding via Multi-scale 3D VQVAE                                  | https://github.com/cyw-3d/SAR3D                                    |
+| [11/26/2024] | LiteVAR: Compressing Visual Autoregressive Modelling with Efficient Attention and Quantization                                    | https://arxiv.org/abs/2411.17178                                   |
+| [11/15/2024] | M-VAR: Decoupled Scale-wise Autoregressive Modeling for High-Quality Image Generation                                             | https://github.com/OliverRensu/MVAR                                |
+| [10/14/2024] | [ICLR 2025]HART: Efficient Visual Generation with Hybrid Autoregressive Transformer                                               | https://github.com/mit-han-lab/hart                                |
+| [10/12/2024] | [ICLR 2025 Oral]Toward Guidance-Free AR Visual Generation via Condition Contrastive Alignment                                     | https://github.com/thu-ml/CCA                                      |
+| [10/3/2024]  | [ICLR 2025]ImageFolder🚀: Autoregressive Image Generation with Folded Tokens                                                      | https://github.com/lxa9867/ImageFolder                             |
+| [07/25/2024] | ControlVAR: Exploring Controllable Visual Autoregressive Modeling                                                                 | https://github.com/lxa9867/ControlVAR                              |
+| [07/3/2024]  | VAR-CLIP: Text-to-Image Generator with Visual Auto-Regressive Modeling                                                            | https://github.com/daixiangzi/VAR-CLIP                             |
+| [06/16/2024] | STAR: Scale-wise Text-to-image generation via Auto-Regressive representations                                                     | https://arxiv.org/abs/2406.10797                                   |
 
 
 ## License
