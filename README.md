@@ -167,6 +167,7 @@ We'll provide the sampling script later.
 
 | **Time**     | **Research**                                                                                                                  | **Link**                                                           |
 |--------------|-------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------|
+| [7/26/2025]  | SCALAR: Scale-wise Controllable Visual Autoregressive Learning                                                                | https://arxiv.org/abs/2507.19946                                   |
 | [5/12/2025]  | [ICML 2025]Continuous Visual Autoregressive Generation via Score Maximization                                                 | https://github.com/shaochenze/EAR                                  |
 | [5/8/2025]   | Generative Autoregressive Transformers for Model-Agnostic Federated MRI Reconstruction                                        | https://github.com/icon-lab/FedGAT                                 |
 | [4/7/2025]   | FastVAR: Linear Visual Autoregressive Modeling via Cached Token Pruning                                                       | https://github.com/csguoh/FastVAR                                  |
