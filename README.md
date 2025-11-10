@@ -26,7 +26,9 @@
 <br>
 
 ## News
-
+* **2025-11:** We Release our Text-to-Video generation model **InfinityStar** based on VAR & Infinity, please check [Infinity⭐️](https://github.com/FoundationVision/InfinityStar).
+* **2025-11:** 🎉 InfinityStar is accepted as **NeurIPS 2025 Oral.**
+* **2025-04:** 🎉 Infinity is accepted as **CVPR 2025 Oral.**
 * **2024-12:** 🏆 VAR received **NeurIPS 2024 Best Paper Award**.
 * **2024-12:** 🔥 We Release our Text-to-Image research based on VAR, please check [Infinity](https://github.com/FoundationVision/Infinity).
 * **2024-09:** VAR is accepted as **NeurIPS 2024 Oral** Presentation.
